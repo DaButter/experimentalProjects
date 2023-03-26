@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Enter your name</title>
+  </head>
+  <body>
+    <h1>Enter your name</h1>
+    <form method="POST" action="{{ url_for('setname') }}">
+      <label for="username">Username:</label>
+      <input type="text" id="username" name="username" required>
+      <button type="submit">Submit</button>
+    </form>
+  </body>
+</html>

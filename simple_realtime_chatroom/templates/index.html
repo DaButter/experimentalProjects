@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Chat Room</title>
+  </head>
+  <body>
+    <h1>Chat Room</h1>
+    <div>
+      {% for message in messages %}
+        <p>{{ message }}</p>
+      {% endfor %}
+    </div>
+    <form method="POST" action="/">
+      <label for="message">Message:</label><br>
+      <input type="text" id="message" name="message" required><br>
+      <input type="submit" value="Send">
+    </form>
+    <script>
+      document.getElementById('message').focus();
+    </script>
+  </body>
+</html>
