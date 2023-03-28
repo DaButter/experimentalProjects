@@ -19,8 +19,7 @@ if __name__ == '__main__':
         if score == second_lowest_score:
             second_lowest_students.append(name)
 
-    second_lowest_students = sorted(second_lowest_students)
-
     # print sorted student names in alphabetical order
+    second_lowest_students = sorted(second_lowest_students)
     for element in second_lowest_students:
         print(element)
