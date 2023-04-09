@@ -29,5 +29,7 @@ In my how country we use an advertisement service ss.com which sells flats, hous
 
 <img title="a title" alt="Alt text" src="PNG/new_adv.png">
 
-# [Hackerrank Python courses for certificate completion (Python tasks - basic)](https://github.com/DaButter/experimentalProjects/tree/main/hackerrank_python_basic) <a name="hackerrank_python_basic">
-Training and completing hackerrank.com Pyhon(basic) course development tasks for future certification. Work in progress
+# [Hackerrank Python courses for certificate completion (Python tasks - basic)](https://github.com/DaButter/experimentalProjects/tree/main/hackerrank_python_basic) <a name="hackerrank_python_basic"></a>
+Training and completing hackerrank.com Pyhon(basic) course development tasks for certification.
+I have summerized all the tasks in the repository as they can serve as quick personal notes for python.
+At the end of this course, certification will be achieved.
