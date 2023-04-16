@@ -13,7 +13,7 @@ Self built random projects for educational purposes and to have fun :)
 [Hackerrank Python courses for certificate completion (Python tasks - basic)](#hackerrank_python_basic)
 
 
-# [Simple credit calculator (C/C++ project)](https://github.com/DaButter/experimentalProjects/tree/main/SScom_advertisement_scraper) <a name="credit_calculator"></a>
+# [Simple credit calculator (C/C++ project)](https://github.com/DaButter/experimentalProjects/tree/main/credit_calculator) <a name="credit_calculator"></a>
 Simple credit interest calculator. Project written in C/C++, mainly used for excercise all kind of random and unusable user input handling.
 Demo in terminal of this program:
 
