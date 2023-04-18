@@ -1,6 +1,4 @@
 import re
 
-s = input()
-for t in re.split(r",|\.", s):
-    if t != '':
-        print(t)
+regex_pattern = r",|\."	 # Do not delete 'r'.
+print("\n".join(re.split(regex_pattern, input())))
