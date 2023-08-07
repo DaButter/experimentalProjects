@@ -1,0 +1,122 @@
+[
+  {
+    "hour_range": "00-01",
+    "today": 0.0121,
+    "tomorrow": 0.0317
+  },
+  {
+    "hour_range": "01-02",
+    "today": 0.0048,
+    "tomorrow": -0.0001
+  },
+  {
+    "hour_range": "02-03",
+    "today": 0.0049,
+    "tomorrow": -0.0073
+  },
+  {
+    "hour_range": "03-04",
+    "today": 0.0269,
+    "tomorrow": -0.0075
+  },
+  {
+    "hour_range": "04-05",
+    "today": 0.0084,
+    "tomorrow": -0.0041
+  },
+  {
+    "hour_range": "05-06",
+    "today": 0.0057,
+    "tomorrow": -0.0061
+  },
+  {
+    "hour_range": "06-07",
+    "today": 0.0051,
+    "tomorrow": -0.002
+  },
+  {
+    "hour_range": "07-08",
+    "today": 0.0801,
+    "tomorrow": 0.0
+  },
+  {
+    "hour_range": "08-09",
+    "today": 0.0876,
+    "tomorrow": 0.018
+  },
+  {
+    "hour_range": "09-10",
+    "today": 0.0845,
+    "tomorrow": 0.0209
+  },
+  {
+    "hour_range": "10-11",
+    "today": 0.056,
+    "tomorrow": 0.0031
+  },
+  {
+    "hour_range": "11-12",
+    "today": 0.0098,
+    "tomorrow": -0.0047
+  },
+  {
+    "hour_range": "12-13",
+    "today": 0.0057,
+    "tomorrow": -0.0075
+  },
+  {
+    "hour_range": "13-14",
+    "today": 0.005,
+    "tomorrow": -0.0001
+  },
+  {
+    "hour_range": "14-15",
+    "today": 0.004,
+    "tomorrow": -0.0001
+  },
+  {
+    "hour_range": "15-16",
+    "today": 0.0002,
+    "tomorrow": -0.0001
+  },
+  {
+    "hour_range": "16-17",
+    "today": 0.0468,
+    "tomorrow": -0.0121
+  },
+  {
+    "hour_range": "17-18",
+    "today": 0.0416,
+    "tomorrow": -0.0044
+  },
+  {
+    "hour_range": "18-19",
+    "today": 0.094,
+    "tomorrow": 0.0007
+  },
+  {
+    "hour_range": "19-20",
+    "today": 0.0955,
+    "tomorrow": 0.109
+  },
+  {
+    "hour_range": "20-21",
+    "today": 0.0954,
+    "tomorrow": 0.1151
+  },
+  {
+    "hour_range": "21-22",
+    "today": 0.109,
+    "tomorrow": 0.1178
+  },
+  {
+    "hour_range": "22-23",
+    "today": 0.0892,
+    "tomorrow": 0.11
+  },
+  {
+    "hour_range": "23-00",
+    "today": 0.0362,
+    "tomorrow": 0.0015
+  }
+]
