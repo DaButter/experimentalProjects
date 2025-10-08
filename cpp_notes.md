@@ -147,7 +147,7 @@ int main() {
 }
 ```
 
-after prorocessing, we get this:
+after preprocessing, we get this:
 ```cpp
 static int s_var = 5;
 int s_var = 10;
@@ -1182,85 +1182,123 @@ int main() {
 <details>
 <summary>Smart pointers</summary>
 
-Smart pointers in C++ `std::unique_ptr, std::shared_ptr, std::weak_ptr`.
-This automates new-delete handling - wrapper around a real raw pointer.
+Smart pointers automate `new/delete` handling - they're wrapper classes around raw pointers that manage memory automatically.
 
-`std::unique_ptr` - scoped pointer, when goes out of scope, it will get destroyed and call `delete()`. Cannot be copied.
+`std::unique_ptr` - Exclusive Ownership
 ```cpp
 #include <memory>
 
-class Entity() {
-  public:
-    Entity() {/*...*/}
-    ~Entity() {/*...*/}
-    void Print() {/*...*/}
-}
+class Entity {
+public:
+    Entity() { std::cout << "Entity created\n"; }
+    ~Entity() { std::cout << "Entity destroyed\n"; }
+    void Print() { std::cout << "Hello from Entity!\n"; }
+};
 
 int main() {
     {
-        // std::unique_ptr<Entity> entity(new Entity());
-        // this is the prefered way, safer in case constructor throws an exception, and dont end up with a ptr with no reference 
+        // PREFERRED: std::make_unique (exception-safe)
         std::unique_ptr<Entity> entity = std::make_unique<Entity>();
-        // std::unique_ptr<Entity> entity2 = entity; // we cannot do this!!!
-        entity->Print();
+        
+        // ❌ This WON'T compile - unique_ptr cannot be copied
+        // std::unique_ptr<Entity> entity2 = entity;
+        
+        // ✅ This WORKS - transfers ownership (move semantics)
+        std::unique_ptr<Entity> entity2 = std::move(entity);
+        // Now entity is nullptr, entity2 owns the object
+        
+        entity2->Print();  // Use like a regular pointer
     }
-    // when this goes out of scope, delete() is automatically called
+    // When scope ends, Entity is automatically destroyed
+    // Output: "Entity destroyed"
 }
 ```
 
-`std::shared_ptr` - uses smth called reference counting. practice where we count how many references we have to the ptr, if its 0, we free memeory.
-This ptr can be copied.
+Key Points:
+
+* One owner only - cannot be copied
+* Zero overhead - same performance as raw pointer
+* Automatic cleanup - no memory leaks
+* Use std::make_unique for exception safety
+
+`std::shared_ptr` - Shared Ownership
+```cpp
+#include <memory>
+
+class Entity {
+public:
+    Entity() { std::cout << "Entity created\n"; }
+    ~Entity() { std::cout << "Entity destroyed\n"; }
+};
+
+int main() {
+    std::shared_ptr<Entity> e0;  // Empty shared_ptr
+    
+    {
+        std::shared_ptr<Entity> sharedEntity = std::make_shared<Entity>();
+        // Reference count = 1
+        
+        e0 = sharedEntity;  // Copy increases reference count to 2
+        std::cout << "Reference count: " << e0.use_count() << std::endl;  // 2
+        
+    }  // sharedEntity goes out of scope → reference count decreases to 1
+    // Entity NOT destroyed because e0 still holds a reference
+    
+    std::cout << "Reference count: " << e0.use_count() << std::endl;  // 1
+    
+}  // e0 goes out of scope → reference count = 0 → Entity destroyed
+```
+
+Key Points:
+* Multiple owners - uses reference counting
+* Overhead - small performance cost for reference counting
+* Use std::make_shared - more efficient memory allocation
+* Circular references can cause memory leaks (use weak_ptr to break)
+
+`std::weak_ptr` - Non-Owning Reference
 
 ```cpp
 #include <memory>
 
-class Entity() {
-  public:
-    Entity() {/*...*/}
-    ~Entity() {/*...*/}
-    void Print() {/*...*/}
-}
+class Entity {
+public:
+    Entity() { std::cout << "Entity created\n"; }
+    ~Entity() { std::cout << "Entity destroyed\n"; }
+};
 
 int main() {
+    std::weak_ptr<Entity> weakEntity;  // Does NOT increase reference count
+    
     {
-        std::shared_ptr<Entity> e0;
-        {
-            // we need to use make_unique in case contructor error, shared_ptr contructs a control block, which wont be freed
-            std::shared_ptr<Entity> sharedEntity = std::make_unique<Entity>();
-            e0 = sharedEntity;
+        std::shared_ptr<Entity> sharedEntity = std::make_shared<Entity>();
+        // Reference count = 1
+        
+        weakEntity = sharedEntity;  // Reference count STAYS 1
+        
+        // To use weak_ptr, must convert to shared_ptr temporarily
+        if (auto tempShared = weakEntity.lock()) {
+            // tempShared is a valid shared_ptr while in this scope
+            std::cout << "Entity is still alive\n";
         }
-        // when 1st cope dies, sharedEntity dies
-        // but e0 lives, hold reference to Entity object
-    }
-    // here e0 dies, which held last reference to Entity
-}
-```
-
-`std::weak_ptr` - usually used together with `shared_ptr`
-
-```cpp
-#include <memory>
-
-class Entity() {
-  public:
-    Entity() {/*...*/}
-    ~Entity() {/*...*/}
-    void Print() {/*...*/}
-}
-
-int main() {
-    {
-        std::weak_ptr<Entity> e0; // weak_ptr does not increase ref count of shared_ptr
-        {
-            std::shared_ptr<Entity> sharedEntity = std::make_unique<Entity>();
-            e0 = sharedEntity;
-        }
-        // entity gets destroyed and weak_ptr points to invalid memory now
+        
+    }  // sharedEntity destroyed → reference count = 0 → Entity destroyed
+    
+    // Now weakEntity points to destroyed object
+    if (auto tempShared = weakEntity.lock()) {
+        // This WON'T execute - object is already destroyed
+        std::cout << "Entity is still alive\n";
+    } else {
+        std::cout << "Entity has been destroyed\n";
     }
 }
 ```
+Key Points:
+* No ownership - doesn't keep object alive
+* Prevents circular references between shared_ptrs
+* Must check validity before use with .lock()
+* Use case: Observers, caches, breaking circular dependencies
 
-Should try to use them all the time, safe way, prevents you from memory leaks, automates memory management.
+Always prefer smart pointers over raw pointers for modern C++ development!
 </details>
 
 
@@ -1434,11 +1472,511 @@ int main() {
 <details>
 <summary>Dynamic arrays</summary>
 
-```cpp
+`std::vector` is a resizable array that manages its own memory. Unlike C-style arrays, vectors can grow and shrink dynamically.
 
+Basic Vector Usage
+```cpp
+#include <vector>
+#include <iostream>
+
+struct Vertex {
+    float x, y, z;
+    
+    // Constructor for convenience
+    Vertex(float x, float y, float z) : x(x), y(y), z(z) {}
+};
+
+// Overload << for easy printing
+std::ostream& operator<<(std::ostream& stream, const Vertex& vertex) {
+    stream << vertex.x << ", " << vertex.y << ", " << vertex.z;
+    return stream;
+}
+
+// Important: Pass by const reference to avoid copying
+void Function(const std::vector<Vertex>& vertices) {
+    for (const Vertex& v : vertices) {
+        std::cout << v << std::endl;
+    }
+}
+
+int main() {
+    std::vector<Vertex> vertices;
+    
+    // Add elements
+    vertices.push_back(Vertex(1, 2, 3));
+    vertices.push_back(Vertex(4, 5, 6));
+    vertices.push_back(Vertex(7, 8, 9));
+
+    // Method 1: Index-based loop
+    for (size_t i = 0; i < vertices.size(); i++) {
+        std::cout << vertices[i] << std::endl;
+    }
+
+    // Method 2: Range-based loop (PREFERRED)
+    for (const Vertex& v : vertices) {  // Use reference to avoid copying!
+        std::cout << v << std::endl;
+    }
+
+    // Remove elements
+    vertices.erase(vertices.begin() + 1);  // Remove 2nd element
+    vertices.clear();  // Remove all elements
+}
+```
+
+Optimizing Vector Performance:
+```cpp
+#include <vector>
+#include <iostream>
+
+struct Vertex {
+    float x, y, z;
+    
+    Vertex(float x, float y, float z) : x(x), y(y), z(z) {
+        std::cout << "Constructed at " << this << std::endl;
+    }
+    
+    // Copy constructor
+    Vertex(const Vertex& other) : x(other.x), y(other.y), z(other.z) {
+        std::cout << "Copied from " << &other << " to " << this << std::endl;
+    }
+    
+    // Move constructor (C++11)
+    Vertex(Vertex&& other) noexcept : x(other.x), y(other.y), z(other.z) {
+        std::cout << "Moved from " << &other << " to " << this << std::endl;
+    }
+};
+
+int main() {
+    std::cout << "=== INEFFICIENT WAY ===" << std::endl;
+    {
+        std::vector<Vertex> vertices;
+        
+        // This creates temporary Vertex objects, then COPIES them into vector
+        vertices.push_back(Vertex(1, 2, 3));  // Construct + Copy
+        vertices.push_back(Vertex(4, 5, 6));  // Construct + Copy + possible reallocation
+        vertices.push_back(Vertex(7, 8, 9));  // Construct + Copy + possible reallocation
+    }
+    
+    std::cout << "\n=== EFFICIENT WAY ===" << std::endl;
+    {
+        std::vector<Vertex> vertices;
+        vertices.reserve(3);  // Pre-allocate memory for 3 elements
+        
+        // emplace_back constructs objects IN PLACE - no copies!
+        vertices.emplace_back(1, 2, 3);  // Direct construction in vector memory
+        vertices.emplace_back(4, 5, 6);  // Direct construction
+        vertices.emplace_back(7, 8, 9);  // Direct construction
+    }
+    
+    std::cout << "\n=== EVEN BETTER: C++11 MOVE ===" << std::endl;
+    {
+        std::vector<Vertex> vertices;
+        vertices.reserve(3);
+        
+        // If you already have objects, use std::move
+        Vertex v1(1, 2, 3);
+        Vertex v2(4, 5, 6);
+        Vertex v3(7, 8, 9);
+        
+        vertices.push_back(std::move(v1));  // Move instead of copy
+        vertices.push_back(std::move(v2));
+        vertices.push_back(std::move(v3));
+    }
+}
 ```
 </details>
 
+<details>
+<summary>Local static in C++</summary>
+
+```cpp
+#include <iostream>
+
+void Function() {
+    // Static local variable - initialized ONLY on first function call
+    // Lifetime: entire program duration
+    // Scope: only within this function
+    static int i = 0;  // Initialization happens ONCE
+    i++;
+    std::cout << i << std::endl;
+}
+
+int main() {
+    Function();  // Output: 1 (i initialized to 0, then incremented to 1)
+    Function();  // Output: 2 (i remembered as 1, incremented to 2)  
+    Function();  // Output: 3 (i remembered as 2, incremented to 3)
+    // Without 'static' it would output: 1, 1, 1
+    // With 'static' it outputs: 1, 2, 3
+}
+```
+
+Key Characteristics of Local Static Variables
+1. Initialization Happens Once:
+```cpp
+void expensiveInitialization() {
+    static std::vector<int> data = []() {
+        std::cout << "Initializing expensive data..." << std::endl;
+        std::vector<int> result;
+        // Simulate expensive setup
+        for (int i = 0; i < 1000; i++) {
+            result.push_back(i);
+        }
+        return result;
+    }();  // This lambda is called ONLY on first invocation
+    
+    std::cout << "Data size: " << data.size() << std::endl;
+}
+
+int main() {
+    expensiveInitialization();  // "Initializing expensive data..."
+    expensiveInitialization();  // No initialization message
+    expensiveInitialization();  // No initialization message
+}
+```
+
+2. Thread-Safe in C++11+
+```cpp
+#include <thread>
+#include <vector>
+
+void counter() {
+    static int count = 0;  // Thread-safe initialization in C++11+
+    count++;
+    std::cout << "Count: " << count << std::endl;
+}
+
+int main() {
+    std::vector<std::thread> threads;
+    for (int i = 0; i < 5; i++) {
+        threads.emplace_back(counter);
+    }
+    for (auto& t : threads) {
+        t.join();
+    }
+}
+```
+
+Singleton Pattern with Local Static
+```cpp
+#include <iostream>
+#include <string>
+
+class Singleton {
+private:
+    std::string name;
+    
+    // Private constructor - cannot create instances directly
+    Singleton() : name("DefaultSingleton") {
+        std::cout << "Singleton constructed!" << std::endl;
+    }
+    
+public:
+    // Delete copy operations to prevent duplication
+    Singleton(const Singleton&) = delete;
+    Singleton& operator=(const Singleton&) = delete;
+    
+    // Static method to get the single instance
+    static Singleton& Get() {
+        static Singleton instance;  // Created on first call only
+        return instance;
+    }
+    
+    void Hello() {
+        std::cout << "Hello from " << name << std::endl;
+    }
+    
+    void setName(const std::string& newName) {
+        name = newName;
+    }
+};
+
+int main() {
+    Singleton::Get().Hello();  // Output: "Singleton constructed!" then "Hello from DefaultSingleton"
+    
+    Singleton::Get().setName("MyRouter");
+    Singleton::Get().Hello();  // Output: "Hello from MyRouter"
+    
+    // All these refer to the SAME instance:
+    Singleton& s1 = Singleton::Get();
+    Singleton& s2 = Singleton::Get();
+    
+    std::cout << "Same instance? " << (&s1 == &s2) << std::endl;  // Output: 1 (true)
+}
+```
+</details>
+
+<details>
+<summary>Using static libraries (Static Linking)</summary>
+
+Static vs Dynamic Linking
+*Static Linking:*
+* Library code is embedded directly into your executable
+* Linking happens at compile time
+* Result: Single .exe file, no external dependencies needed
+* Advantages: Faster, compiler can optimize across library boundaries
+* Disadvantages: Larger executable size, harder to update libraries
+
+*Dynamic Linking:*
+* Library code stays in separate files (.dll on Windows, .so on Linux)
+* Linking happens at runtime
+* Result: Smaller executable, but requires library files to be present
+* Advantages: Smaller executables, easier library updates
+* Disadvantages: Slower (runtime lookup), deployment complexity
+
+Project structure:
+```bash
+MyProject/
+├── src/
+│   └── main.cpp
+├── dependencies/
+│   └── GLFW/
+│       ├── include/
+│       │   └── GLFW/
+│       │       └── glfw3.h
+│       └── lib/
+│           ├── Windows/
+│           │   ├── x64/
+│           │   │   ├── glfw3.lib    # Static library
+│           │   │   └── glfw3.dll    # Dynamic library (if dynamic linking)
+│           │   └── x86/
+│           └── Linux/
+│               └── x64/
+│                   └── libglfw3.a   # Linux static library
+└── build/                           # Build output directory
+```
+
+Code usage:
+```cpp
+#include <GLFW/glfw3.h>  // Use <> for external dependencies
+// Convention:
+// - <> = system/external headers (compiler searches system paths first)
+// - "" = project-local headers (searches current directory first)
+
+extern "C" int glfwInit();
+// This tells C++ compiler: "This function uses C linkage, not C++ name mangling"
+// Most libraries already handle this in their headers, so you usually don't need it
+
+int main() {
+    int a = glfwInit();
+}
+```
+
+Multiple ways to add link the dependency:
+CMake: `include_directories(dependencies/GLFW/include)`
+Make: 
+```makefile
+# ....
+CXXFLAGS = -std=c++17 -Idependencies/GLFW/include
+LDFLAGS = -Ldependencies/GLFW/lib/Linux/x64 -lglfw3
+# ....
+```
+</details>
+
+
+<details>
+<summary>Using dynamic libraries</summary>
+
+Dynamic libraries are external binary files that get linked to your program at runtime, not compile time.
+
+File Types by Platform
+
+| Platform | Dynamic Library File        | Import Library (Windows)     |
+|----------|-----------------------------|------------------------------|
+| Windows  | .dll (Dynamic Link Library) | .lib (Import library)        |
+| Linux    | .so (Shared Object)         | (No separate import library) |
+| macOS    | .dylib (Dynamic Library)    | (No separate import library) |
+
+
+How Dynamic Linking Works
+Compile Time:
+* Your code compiles against header files and import libraries (.lib on Windows)
+* The import library contains "stubs" that know how to load the DLL at runtime
+
+Runtime:
+* Your program starts
+* Operating system loads your .exe + required .dll files
+* Function calls are redirected to the DLL
+
+
+Dynamic vs Static: When to Use Each
+Use Dynamic Linking When:
+* Multiple programs use the same library (saves disk/memory)
+* Frequent updates to the library
+* Large libraries that would bloat your executable
+* Plugin systems where libraries can be swapped
+
+Use Static Linking When:
+* Single executable deployment
+* Performance critical applications
+* Avoiding DLL hell (dependency issues)
+* Embedded systems with limited resources
+</details>
+
+
+<details>
+<summary>Multiple return values and types</summary>
+
+1. Output Parameters (Reference)
+```cpp
+// Modify variables passed by reference - simple but not obvious from caller side
+void ParseShader(std::string& outVertex, std::string& outFragment) {
+    outVertex = "vertex shader code";
+    outFragment = "fragment shader code";
+}
+
+int main() {
+    std::string vertex, fragment;
+    ParseShader(vertex, fragment); // Values are modified directly
+}
+```
+
+2. Output Parameters (Pointer)
+```cpp
+// Pointer version allows optional outputs with null checks
+void ParseShader(std::string* outVertex, std::string* outFragment) {
+    if (outVertex)   *outVertex = "vertex shader code";
+    if (outFragment) *outFragment = "fragment shader code";
+}
+
+int main() {
+    std::string fragment;
+    ParseShader(nullptr, &fragment); // Only get fragment, skip vertex
+}
+```
+
+3. Return Array/Vector
+```cpp
+#include <array>
+#include <vector>
+
+// Fixed-size array return
+std::array<std::string, 2> ParseShader() {
+    return {"vertex code", "fragment code"}; // C++11 uniform initialization
+}
+
+// Dynamic vector return  
+std::vector<std::string> ParseShaderDynamic() {
+    return {"vertex", "fragment"};
+}
+```
+
+4. Return Pair/Tuple
+```cpp
+#include <tuple>
+#include <utility>
+
+// Using std::pair for exactly 2 values
+std::pair<std::string, std::string> ParseShaderPair() {
+    return std::make_pair("vertex", "fragment");
+    // Or in C++17: return {"vertex", "fragment"};
+}
+
+// Using std::tuple for multiple values
+std::tuple<std::string, std::string, int> ParseShaderTuple() {
+    return std::make_tuple("vertex", "fragment", 200);
+}
+```
+
+5. Accessing Pair/Tuple Values
+```cpp
+int main() {
+    // Method 1: std::get with index (works for both pair and tuple)
+    auto results = ParseShaderTuple();
+    std::string vs = std::get<0>(results);
+    std::string fs = std::get<1>(results);
+    int status = std::get<2>(results);
+    
+    // Method 2: .first/.second (pair only)
+    auto pairResults = ParseShaderPair();
+    std::string vertex = pairResults.first;
+    std::string fragment = pairResults.second;
+    
+    // Method 3: Structured bindings (C++17 - RECOMMENDED)
+    auto [vert, frag] = ParseShaderPair(); // Clean and readable!
+}
+```
+
+6. Best Practice: Use Struct (Recommended)
+```cpp
+// Most readable and self-documenting approach
+struct ShaderSource {
+    std::string vertex;
+    std::string fragment;
+    int compileStatus;
+};
+
+ShaderSource ParseShader() {
+    return {"vertex code", "fragment code", 200};
+}
+
+int main() {
+    ShaderSource source = ParseShader();
+    std::cout << source.vertex; // Clear what you're accessing
+}
+```
+
+*Summary:*
+* References/Pointers: Simple but implicit behavior
+* Arrays/Vectors: Good for homogeneous data
+* Pairs/Tuples: Standard library solution, but .first/.second lack meaning
+* Structs: Most recommended - self-documenting, clear field names, best maintainability
+
+Modern C++ Tip: Use structured bindings (C++17) with structs for the cleanest syntax:
+```cpp
+auto [vertex, fragment, status] = ParseShader(); // Clean and readable!
+```
+</details>
+
+
+<details>
+<summary>Templates</summary>
+
+Templates are a C++ feature that lets you write generic code where the compiler generates specific versions based on the types you use. It's like "programming the compiler" to write code for you. 
+Templates are similar to generics in Java/C# but more powerful and flexible, allowing both type and value parameters.
+
+Basic Function Template
+```cpp
+template<typename T>
+void Print(T value) {
+    std::cout << value << std::endl;
+}
+// Usage: Print(5); Print("Hello"); Print(5.5f);
+```
+
+* The compiler creates different Print functions for each type used
+* If not called, the template function doesn't get compiled
+* You can explicitly specify types: Print<int>(5)
+
+Class Template with Multiple Parameters:
+```cpp
+template<typename T, int N>
+class Array {
+private:
+    T m_Array[N];
+public:
+    int GetSize() const { return N; }
+};
+```
+
+* Creates type-safe containers: `Array<int, 5>`, `Array<std::string, 10>` or other.
+* Both types AND values can be template parameters
+
+Key Points
+* Eliminates code duplication - write once, use with any type
+* Compile-time generation - templates are instantiated when used
+* Type safety - maintains type checking while being generic
+* Can get complex - should be kept simple for readability
+</details>
+
+
+<details>
+<summary>Stack vs Heap memory</summary>
+
+```cpp
+
+```
+
+</details>
 
 
 <details>
@@ -1456,8 +1994,11 @@ Things that i need to understand:
 stack, heap, stack pointer. what even is that memory and where it exists - ram? os gives it to the program? how does it know how much
 debugging in c++
 compilators in c++
+Design Patterns (Singleton, Factory, Observer) what is this
+merge sort, bubble sort - sorting
+what is RAII - Resource Acquisition Is Initialization, what does that mean
 
-git, git modules
+git, git submodules, package managers used for library linking
 linux
 networking, OSI model, everything
 what good coding methods do i use in work?
