@@ -1,11 +1,106 @@
 ### Some things I should remember about C/C++
 
+Used 109 video C++ playlist from The Cherno:
+https://www.youtube.com/watch?v=18c3MTX0PK0&list=PLlrATfBNZ98dudnM48yfGUldqGD0S4FFb
+
+
 <details>
-<summary>Preprocessor commands</summary>
+<summary>Preprocessor commands/macros</summary>
+Preprocessor commands start with # and are processed before compilation. The preprocessor essentially does text manipulation on your source code.
+Basically it does a find and replace, and it also can be with parameters, conditions etc. and get complicated quickly.
 
-Everything that begins with a `#` in C++ is a preprocessor command and gets evaluated by the preprocessor before compiling.
+Common Preprocessor Commands
+1. #pragma once - Header Guards
+```cpp
+// myheader.h
+#pragma once  // Tells preprocessor: "Only include this file once per translation unit"
 
-`#pragma once` is a preprocessor command to "only inlcude this file once" in a single translation unit - a single C++ file. Header files just copy-paste the code, if it is done twice, we can get multiple definition errors.
+class MyClass {
+    // Class definition...
+};
+
+// Without #pragma once, if this header is included multiple times,
+// you'd get "redefinition" errors during compilation
+```
+
+Traditional alternative (still used):
+```cpp
+// myheader.h
+#ifndef MYHEADER_H  // If not defined...
+#define MYHEADER_H  // Define it now
+
+class MyClass {
+    // Class definition...
+};
+
+#endif // MYHEADER_H  // End of guard
+```
+
+2. `#include` - File Inclusion
+```cpp
+#include <iostream>    // System headers - compiler searches system paths
+#include "myheader.h"  // Local headers - searches current directory first
+
+// What happens:
+// The preprocessor literally COPY-PASTES the entire content of iostream
+// and myheader.h into this file before compilation
+```
+
+3. `#define` - Macros
+```cpp
+// Simple constants
+#define MAX_CONNECTIONS 1000
+#define BUFFER_SIZE 1500
+
+// Macros with parameters (use cautiously!)
+#define SQUARE(x) ((x) * (x))
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+
+int main() {
+    int connections = MAX_CONNECTIONS;
+    int buffer[BUFFER_SIZE];
+    int squared = SQUARE(5);      // Becomes: ((5) * (5))
+    int larger = MAX(10, 20);     // Becomes: ((10) > (20) ? (10) : (20))
+}
+```
+
+4. `#ifdef` / `#ifndef` / `#endif` - Conditional Compilation
+```cpp
+#define DEBUG_MODE  // Comment this out to disable debug code
+
+#ifdef DEBUG_MODE
+    #define DEBUG_LOG(x) std::cout << "DEBUG: " << x << std::endl
+#else
+    #define DEBUG_LOG(x)  // Becomes empty - no code generated
+#endif
+
+int main() {
+    DEBUG_LOG("Starting router...");  // Only compiled if DEBUG_MODE is defined
+}
+```
+
+5. `#if` / `#elif` / `#else` - Conditional Compilation with Expressions
+```cpp
+#define VERSION 3
+
+#if VERSION == 1
+    #define PROTOCOL "HTTP/1.0"
+#elif VERSION == 2
+    #define PROTOCOL "HTTP/1.1"
+#elif VERSION == 3
+    #define PROTOCOL "HTTP/2.0"
+#else
+    #define PROTOCOL "UNKNOWN"
+#endif
+```
+
+Key Takeaways
+* Preprocessor runs before compilation - it's text substitution
+* `#pragma` once prevents multiple inclusion of headers
+* Use #define sparingly - prefer constexpr and templates in modern C++
+* Conditional compilation (`#ifdef`, `#if`) is essential for cross-platform code
+* Macros can be dangerous - use parentheses and prefer inline functions
+
 </details>
 
 <details>
@@ -912,6 +1007,7 @@ auto f3 = [x, &y]() { return x + y; };  // x is copy, y is reference
 // [] Capture nothing
 auto f4 = []() { return 42; };  // No access to x or y
 ```
+
 </details>
 
 
@@ -1972,17 +2068,514 @@ Key Points
 <details>
 <summary>Stack vs Heap memory</summary>
 
-```cpp
+These are the two main memory areas in RAM when your application runs. They have very different allocation strategies and performance characteristics.
 
+```cpp
+#include <iostream>
+
+struct Vector3 {
+    float x, y, z;
+    Vector3() : x(10), y(11), z(12) {
+        std::cout << "Vector3 constructed" << std::endl;
+    }
+    ~Vector3() {
+        std::cout << "Vector3 destroyed" << std::endl;
+    }
+};
+
+int main() {
+    // STACK ALLOCATION - Automatic, fast
+    int value = 5;          // 4 bytes on stack
+    int array[5];           // 20 bytes on stack
+    array[0] = 1;
+    array[1] = 2;
+    array[2] = 3;
+    array[3] = 4; 
+    array[4] = 5;
+    Vector3 vector;         // 12 bytes on stack
+    // When main() ends, ALL stack variables are automatically freed
+}
+```
+Stack Characteristics:
+* Fixed size (typically 1-8MB per thread)
+* Very fast allocation/deallocation (1 CPU instruction)
+* Automatic cleanup when scope ends
+* LIFO (Last-In-First-Out) order
+* Memory is contiguous
+
+Stack Memory Layout:
+```
+High Addresses
+┌─────────────────┐
+│ main() frame    │
+│   - value = 5   │ ← Stack grows
+│   - array[5]    │   DOWNWARD
+│   - vector      │
+└─────────────────┘
+Low Addresses
 ```
 
+Heap Memory:
+```cpp
+#include <iostream>
+
+int main() {
+    // HEAP ALLOCATION - Manual, slower but flexible
+    // Single value
+    int* hvalue = new int;      // Allocates 4 bytes on heap
+    *hvalue = 5;                // Assign value
+
+    // Array
+    int* harray = new int[5];   // Allocates 20 bytes on heap
+    harray[0] = 1;
+    harray[1] = 2;
+    harray[2] = 3;
+    harray[3] = 4;
+    harray[4] = 5;
+
+    // Object
+    Vector3* hvector = new Vector3();  // Allocates object on heap
+
+    // MUST manually free heap memory
+    delete hvalue;              // Free single value
+    delete[] harray;            // Free array (use delete[])
+    delete hvector;             // Free object
+    // Forgetting to delete causes MEMORY LEAKS!
+}
+```
+Heap Characteristics:
+* Dynamic size (can grow/shrink)
+* Slower allocation (complex bookkeeping)
+* Manual memory management (you must free)
+* Memory can be fragmented
+* Global access (not tied to scope)
+
+
+Key Differences Summary:
+| Aspect        | Stack                | Heap                          |
+|---------------|----------------------|-------------------------------|
+| Speed         | ⚡ Very Fast         | 🐢 Slow                      |
+| Size          | Fixed (~2MB)         | Dynamic (GBs)                 |
+| Management    | Automatic            | Manual                        |
+| Access        | Local scope          | Global                        |
+| Fragmentation | No                   | Yes                           |
+| Allocation    | Move stack pointer   | Search free list + OS calls   |
+
+
+When to Use Each
+Use Stack For:
+* Small, fixed-size arrays
+* Local variables
+* Temporary objects
+* Performance-critical code
+* Objects with short lifetime
+
+Use Heap For:
+* Large data buffers
+* Objects that outlive their creation scope
+* Dynamic arrays where size isn't known at compile time
+* Shared ownership between objects
+
+Best practice: Prefer stack allocation when possible, and use smart pointers when you need heap:
+```cpp
+// GOOD - Stack + smart pointers
+std::vector<uint8_t> packet_data(1500);  // Heap managed by vector
+std::unique_ptr<LargeObject> obj = std::make_unique<LargeObject>();
+
+// BAD - Manual heap management
+uint8_t* packet_data = new uint8_t[1500];  // Don't forget to delete!
+```
 </details>
 
 
 <details>
-<summary>Something</summary>
-:)
+<summary><code>auto</code> keyword</summary>
+
+The auto keyword tells the compiler: "You figure out the type based on the initializer."
+Basic Usage:
+```cpp
+#include <iostream>
+#include <string>
+
+std::string GetName() {
+    return "Austris";
+}
+
+int main() {
+    // Compiler deduces 'a' is std::string (from return type of GetName())
+    auto a = GetName();
+    std::cout << a << std::endl;  // Output: Austris
+    
+    // Other examples:
+    auto x = 5;           // int
+    auto y = 3.14;        // double  
+    auto z = "Hello";     // const char*
+    auto flag = true;     // bool
+}
+```
+
+Why Use auto?
+1. Simplifies Complex Types
+```cpp
+#include <unordered_map>
+#include <vector>
+
+class Device {
+    // Device class definition...
+};
+
+class DeviceManager {
+private:
+    std::unordered_map<std::string, std::vector<Device*>> m_Devices;
+    
+public:
+    // Very long return type!
+    const std::unordered_map<std::string, std::vector<Device*>>& GetDevices() const {
+        return m_Devices;
+    }
+};
+
+int main() {
+    DeviceManager dm;
+    
+    // ❌ Verbose and error-prone:
+    const std::unordered_map<std::string, std::vector<Device*>>& devices1 = dm.GetDevices();
+    
+    // ✅ Clean and maintainable:
+    const auto& devices2 = dm.GetDevices();  // Compiler deduces the exact type
+}
+```
+
+2. Cleaner Iterators
+```cpp
+#include <vector>
+#include <string>
+
+int main() {
+    std::vector<std::string> fruits = {"Apple", "Orange", "Banana"};
+    
+    // ❌ Verbose iterator syntax:
+    for (std::vector<std::string>::iterator it = fruits.begin(); it != fruits.end(); ++it) {
+        std::cout << *it << std::endl;
+    }
+    
+    // ✅ Clean with auto:
+    for (auto it = fruits.begin(); it != fruits.end(); ++it) {
+        std::cout << *it << std::endl;
+    }
+    
+    // ✅ Even better with range-based for loop:
+    for (const auto& fruit : fruits) {
+        std::cout << fruit << std::endl;
+    }
+}
+```
+
+Reference and Const Qualifiers with auto
+Important: auto strips references and const qualifiers by default!
+```cpp
+#include <string>
+
+std::string GetName() {
+    return "Austris";
+}
+
+const std::string& GetNameRef() {
+    static std::string name = "Austris";
+    return name;
+}
+
+int main() {
+    // Case 1: By value
+    auto name1 = GetName();       // Type: std::string (copy)
+    
+    // Case 2: By reference - BUT auto strips reference!
+    auto name2 = GetNameRef();    // Type: std::string (COPY, not reference!)
+    
+    // Case 3: Explicit reference
+    auto& name3 = GetNameRef();   // Type: const std::string& (reference)
+    
+    // Case 4: Explicit const reference  
+    const auto& name4 = GetNameRef();  // Type: const std::string&
+}
+```
+
+Best Practices for auto
+When to Use auto:
+```cpp
+// ✅ Good uses:
+
+// 1. Iterators
+for (auto it = container.begin(); it != container.end(); ++it)
+
+// 2. Complex template types
+auto result = some_template_function<int, std::string>();
+
+// 3. Lambda expressions
+auto lambda = [](int x) { return x * 2; };
+
+// 4. Range-based for loops
+for (const auto& item : container)
+
+// 5. When the type is obvious from context
+auto manager = std::make_unique<DeviceManager>();
+```
+
+When to Avoid auto:
+```cpp
+// ❌ Potentially confusing:
+
+// 1. When the type isn't clear from context
+auto result = ProcessData();  // What type is result?
+
+// 2. With numeric literals (might not be the type you expect)
+auto size = CalculateSize();  // int? size_t? long?
+
+// 3. When you need a specific type for overload resolution
+auto value = GetValue();  // Might not match function overloads
+```
+
+auto with Different Initialization Styles
+```cpp
+#include <memory>
+#include <vector>
+
+int main() {
+    // Direct initialization
+    auto x = 42;                    // int
+    
+    // Copy initialization  
+    auto y = {1, 2, 3};             // std::initializer_list<int>
+    
+    // Uniform initialization (be careful!)
+    auto z{42};                     // int (C++17), was initializer_list in C++11
+    auto w = std::vector<int>{1, 2, 3};  // std::vector<int>
+    
+    // With smart pointers
+    auto device = std::make_unique<Device>();  // std::unique_ptr<Device>
+}
+```
+
+Key Takeaways:
+* Use auto when the type is obvious from context
+* Be explicit with & and const when needed
+* Great for iterators and complex template types
+* Avoid when type clarity is important for readability
+* Combines well with range-based for loops and lambdas
+* Remember: auto strips references/const by default!
+
 </details>
+
+<details>
+<summary>Static Arrays<code>std::array</code></summary>
+
+`std::array` overview:
+```cpp
+#include <array>
+#include <iostream>
+
+// Fixed version using templates
+template<typename T, size_t N>
+void PrintArray(const std::array<T, N>& data) {
+    std::cout << "Array size: " << data.size() << std::endl;
+    std::cout << "Array type: " << typeid(T).name() << std::endl;
+    
+    for(size_t i = 0; i < data.size(); i++) {
+        std::cout << "data[" << i << "] = " << data[i] << std::endl;
+    }
+}
+
+int main() {
+    // Different sizes and types
+    std::array<int, 5> data5 = {1, 2, 3, 4, 5};
+    std::array<double, 3> data3 = {1.1, 2.2, 3.3};
+    std::array<std::string, 2> strings = {"Hello", "World"};
+    
+    PrintArray(data5);     // Works with int, size 5
+    PrintArray(data3);     // Works with double, size 3
+    PrintArray(strings);   // Works with string, size 2
+}
+```
+
+Key Differences: C-style vs std::array
+```cpp
+#include <array>
+#include <iostream>
+
+void demonstrateDifferences() {
+    // C-style array
+    int c_array[5] = {1, 2, 3, 4, 5};
+    
+    // std::array
+    std::array<int, 5> std_array = {1, 2, 3, 4, 5};
+
+    // 1. Bounds Checking
+    std::cout << "=== Bounds Checking ===" << std::endl;
+    
+    // C-array: No bounds checking - UNDEFINED BEHAVIOR!
+    // c_array[10] = 100;  // ❌ Might crash, might corrupt memory
+    
+    // std::array: Safe access with .at()
+    try {
+        std_array.at(10) = 100;  // ✅ Throws std::out_of_range exception
+    } catch (const std::out_of_range& e) {
+        std::cout << "Caught exception: " << e.what() << std::endl;
+    }
+    
+    // 2. Size Information
+    std::cout << "\n=== Size Information ===" << std::endl;
+    
+    // C-array: sizeof gives bytes, not elements
+    std::cout << "C-array sizeof: " << sizeof(c_array) << " bytes" << std::endl;  // 20 bytes
+    // std::cout << "C-array element count: " << sizeof(c_array)/sizeof(c_array[0]) << std::endl;  // Hack needed
+    
+    // std::array: Direct size method
+    std::cout << "std::array size: " << std_array.size() << " elements" << std::endl;  // 5 elements
+    
+    // 3. Assignment and Copying
+    std::cout << "\n=== Assignment ===" << std::endl;
+    
+    std::array<int, 5> another_array = {10, 20, 30, 40, 50};
+    std_array = another_array;  // ✅ Deep copy works!
+    
+    // C-arrays cannot be directly assigned
+    // c_array = {10, 20, 30, 40, 50};  // ❌ Error!
+    
+    // 4. Iterators and Algorithms
+    std::cout << "\n=== Algorithms ===" << std::endl;
+    
+    // std::array works with STL algorithms
+    std::sort(std_array.begin(), std_array.end());
+    for (const auto& val : std_array) {
+        std::cout << val << " ";
+    }
+    std::cout << std::endl;
+}
+```
+</details>
+
+
+<details>
+<summary>Function pointers</summary>
+
+Function pointers allow you to store and pass functions as variables, enabling powerful patterns like callbacks and strategy patterns.
+
+Basic synthax:
+```cpp
+#include <iostream>
+
+void HelloWorld(int a) {
+    std::cout << "Hello world! Value: " << a << std::endl;
+}
+
+int main() {
+    // Method 1: Using auto (easiest)
+    auto function = HelloWorld;  // Implicit conversion to function pointer
+    function(5);  // Output: Hello world! Value: 5
+
+    // Method 2: Explicit function pointer syntax
+    void(*cherno)(int) = HelloWorld;
+    cherno(10);  // Output: Hello world! Value: 10
+
+    // Method 3: Using typedef/using (cleanest for complex types)
+    typedef void(*HelloWorldFunction)(int);
+    HelloWorldFunction func = HelloWorld;
+    func(15);  // Output: Hello world! Value: 15
+
+    // Method 4: Modern using alias
+    using HelloWorldFunc = void(*)(int);
+    HelloWorldFunc modernFunc = HelloWorld;
+    modernFunc(20);  // Output: Hello world! Value: 20
+}
+```
+
+Function Pointer Syntax Explained:
+```cpp
+// The syntax: ReturnType(*PointerName)(ParameterTypes)
+
+// Examples:
+void(*func1)();               // Function taking no parameters, returning void
+int(*func2)(int, int);        // Function taking two ints, returning int
+double(*func3)(const char*);  // Function taking const char*, returning double
+
+// With typedef/using:
+typedef int(*MathOperation)(int, int);
+using MathOp = int(*)(int, int);  // Modern equivalent
+```
+
+Advanced: Function Pointers in Data Structures
+```cpp
+#include <iostream>
+#include <vector>
+#include <functional>  // For std::function (better alternative)
+
+// Calculator operations using function pointers
+class Calculator {
+public:
+    using Operation = int(*)(int, int);
+    
+    static int Add(int a, int b) { return a + b; }
+    static int Subtract(int a, int b) { return a - b; }
+    static int Multiply(int a, int b) { return a * b; }
+    static int Divide(int a, int b) { return b != 0 ? a / b : 0; }
+    
+private:
+    std::vector<std::pair<std::string, Operation>> operations;
+    
+public:
+    Calculator() {
+        // Store operations with their names
+        operations = {
+            {"Add", Add},
+            {"Subtract", Subtract}, 
+            {"Multiply", Multiply},
+            {"Divide", Divide}
+        };
+    }
+    
+    void performOperations(int x, int y) {
+        for (const auto& [name, op] : operations) {
+            std::cout << name << "(" << x << ", " << y << ") = " << op(x, y) << std::endl;
+        }
+    }
+};
+
+int main() {
+    Calculator calc;
+    calc.performOperations(10, 5);
+}
+```
+
+Modern Alternative: std::function (Recommended)
+```cpp
+#include <functional>
+#include <vector>
+#include <iostream>
+
+// Using std::function instead of raw function pointers
+// More flexible - works with lambdas, function objects, member functions
+void ForEachModern(const std::vector<int>& values, const std::function<void(int)>& callback) {
+    for (int value : values) {
+        callback(value);
+    }
+}
+
+int main() {
+    std::vector<int> numbers = {1, 2, 3, 4, 5};
+    
+    // Can capture variables in lambdas (function pointers can't do this!)
+    int external_value = 100;
+    
+    ForEachModern(numbers, [external_value](int value) {
+        std::cout << value << " + " << external_value << " = " << value + external_value << std::endl;
+    });
+    
+    // Also works with regular function pointers
+    ForEachModern(numbers, PrintValue);
+}
+```
+</details>
+
 
 <details>
 <summary><code>Something</code> keyword</summary>
