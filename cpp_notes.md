@@ -1,8 +1,8 @@
 ### Some things I should remember about C/C++
 
-Used 109 video C++ playlist from The Cherno:
+Info mainly from 109 video C++ playlist from The Cherno:
 https://www.youtube.com/watch?v=18c3MTX0PK0&list=PLlrATfBNZ98dudnM48yfGUldqGD0S4FFb
-
++ additional examples/comments.
 
 <details>
 <summary>Preprocessor commands/macros</summary>
@@ -680,6 +680,8 @@ Each object has a hidden pointer to its class's vtable.
 
 The Power of virtual functions - Runtime Polymorphism:
 ```cpp
+// the good stuff is that we dont need to redifine the printName() function for each derived Entity class (Tree, Rock, whatever),
+// we can just pass it here
 void printName(Entity* entity) {
     entity->getName();  // Calls the RIGHT function based on actual object
 }
@@ -987,30 +989,6 @@ int main() {
 ```
 </details>
 
-
-<details>
-<summary>lambdas</summary>
-
-Basic overview of lambda:
-```cpp
-int x = 5, y = 10;
-
-// [=] Capture everything by VALUE (copy)
-auto f1 = [=]() { return x + y; };  // Gets copies of x and y
-
-// [&] Capture everything by REFERENCE  
-auto f2 = [&]() { x++; return y; };  // References to original x and y
-
-// [x, &y] Capture x by value, y by reference
-auto f3 = [x, &y]() { return x + y; };  // x is copy, y is reference
-
-// [] Capture nothing
-auto f4 = []() { return 42; };  // No access to x or y
-```
-
-</details>
-
-
 <details>
 <summary>Member initializer lists</summary>
 
@@ -1054,7 +1032,7 @@ speed = level > 5 ? level > 10 ? 15 : 10 : 5; // usually people do not nest thei
 <details>
 <summary>Create/instantiate objects</summary>
 
-In which memory are we creating out object?
+In which memory are we creating our object?
 When you can, always create objects in stack, instead of heap.
 You want heap when you need the object outside of the scope of function or the object is too big (stack has 1-2Mb or smth around that memory available, depends on platform or compiler).
 
@@ -1294,6 +1272,13 @@ public:
 int main() {
     {
         // PREFERRED: std::make_unique (exception-safe)
+        /*
+        void safeFunction(int size) {
+            auto entity = std::make_unique<Entity>();  // Memory allocated
+            processData(size);                         // ✅ If this throws, entity automatically deletes itself!
+            // No manual delete needed - RAII handles it
+        }
+        */
         std::unique_ptr<Entity> entity = std::make_unique<Entity>();
         
         // ❌ This WON'T compile - unique_ptr cannot be copied
@@ -2578,17 +2563,709 @@ int main() {
 
 
 <details>
+<summary>Lambdas</summary>
+
+Also called anonymous functions.
+
+
+Basic overview of lambda:
+```cpp
+int x = 5, y = 10;
+
+// [=] Capture everything by VALUE (copy)
+auto f1 = [=]() { return x + y; };  // Gets copies of x and y
+
+// [&] Capture everything by REFERENCE
+auto f2 = [&]() { x++; return y; };  // References to original x and y
+
+// [x, &y] Capture x by value, y by reference (can specify individual variables)
+auto f3 = [x, &y]() { return x + y; };  // x is copy, y is reference
+
+// [] Capture nothing
+auto f4 = []() { return 42; };  // No access to x or y
+```
+
+If we want to pass lambda as an argument in some function:
+```cpp
+#include <function>
+
+void ForEach(const std::vector<int>& values, const std::function<void(int)>& func) {
+    for (int value : values)
+        func(value);
+}
+
+int main() {
+    std::vector<int> value = {1,2,3,4,5};
+    int a = 5;
+    auto lambda = [=](int value) { std::cout << "Value: " << a << std::endl; };
+    ForEach(values, lambda);
+}
+```
+
+</details>
+
+<details>
+<summary>namespaces</summary>
+
+```cpp
+namespace apple::func {
+    void print() {}
+}
+
+int main() {
+    apple::func::print();
+}
+```
+
+C++17 might simplify nested namespace definition:
+```cpp
+namespace A::B::C {
+}
+```
+is equivalent to
+```cpp
+namespace A { namespace B { namespace C {
+} } }
+```
+</details>
+
+
+<details>
+<summary>Threads</summary>
+
+Threads in C++ - Example with Comments
+```cpp
+#include <iostream>
+#include <thread>
+#include <chrono>
+
+// Shared variable between threads - needs to be volatile or atomic in real code
+static bool s_Finished = false;
+
+void DoWork() {
+    using namespace std::literals::chrono_literals;  // For the 's' suffix (1s = 1 second)
+
+    // Print the ID of this worker thread
+    std::cout << "Started worker thread id=" << std::this_thread::get_id() << std::endl;
+
+    // Worker thread loop - runs concurrently with main thread
+    while (!s_Finished) {
+        std::cout << "Working...\n";
+        std::this_thread::sleep_for(1s);  // Pause this thread for 1 second
+        // This allows other threads to run while we're sleeping
+    }
+
+    std::cout << "Worker thread finished work\n";
+}
+
+int main() {
+    // Print the main thread ID
+    std::cout << "Main thread id=" << std::this_thread::get_id() << std::endl;
+
+    // Create a new thread that executes DoWork() function
+    // This starts executing IMMEDIATELY in parallel with main thread
+    std::thread worker(DoWork);
+
+    // Main thread continues executing here while worker thread runs DoWork()
+    std::cout << "Press Enter to stop the worker thread..." << std::endl;
+    std::cin.get();  // Main thread waits for user input
+    
+    // Signal the worker thread to stop
+    s_Finished = true;
+    std::cout << "Stop signal sent to worker thread\n";
+
+    // Wait for the worker thread to finish its current work and exit
+    // This BLOCKS the main thread until worker thread completes
+    worker.join();
+    
+    std::cout << "Worker thread has joined main thread\n";
+    std::cout << "All threads finished." << std::endl;
+    
+    std::cin.get();  // Keep console open
+}
+```
+
+Expected Output:
+```log
+Main thread id=140737353922432
+Press Enter to stop the worker thread...
+Started worker thread id=140737353918208
+Working...
+Working...
+Working...
+[User presses Enter]
+Stop signal sent to worker thread
+Worker thread finished work
+Worker thread has joined main thread
+All threads finished.
+```
+
+More Realistic Example with Thread Safety:
+```cpp
+#include <iostream>
+#include <thread>
+#include <chrono>
+#include <atomic>
+
+// Thread-safe shared variable
+static std::atomic<bool> s_Finished = false;
+
+void DoWork(const std::string& threadName) {
+    using namespace std::literals::chrono_literals;
+
+    std::cout << threadName << " started, id=" << std::this_thread::get_id() << std::endl;
+
+    int workCount = 0;
+    while (!s_Finished.load()) {  // Atomic read
+        std::cout << threadName << " working... (" << ++workCount << ")\n";
+        std::this_thread::sleep_for(500ms);  // 0.5 second
+    }
+
+    std::cout << threadName << " finished after " << workCount << " units of work\n";
+}
+
+int main() {
+    std::cout << "=== Multi-Threading Example ===\n";
+    std::cout << "Main thread id=" << std::this_thread::get_id() << std::endl;
+
+    // Create multiple worker threads
+    std::thread worker1(DoWork, "Worker-1");
+    std::thread worker2(DoWork, "Worker-2");
+
+    // Main thread does its own work
+    std::cout << "Main thread is doing other tasks...\n";
+    std::this_thread::sleep_for(2s);  // Main thread sleeps for 2 seconds
+    
+    std::cout << "Main thread signaling workers to stop...\n";
+    s_Finished.store(true);  // Atomic write - signal all workers to stop
+
+    // Wait for all threads to finish
+    worker1.join();
+    worker2.join();
+
+    std::cout << "All threads completed successfully!\n";
+}
+```
+</details>
+
+
+<details>
+<summary>Timing</summary>
+
+Here we can see how much time passes for some process, platform independent:
+```cpp
+#include <chrono>
+#include <thread>
+
+int main() {
+    using namespace std::literals::chrono_literals;
+
+    auto start = std::chrono::high_resolution_clock::now();
+    std::this_thread::sleep_for(1s);
+    auto end = std::chrono::high_resolution_clock::now();
+
+    std::chrono::duration<float> duration = end - start;
+    std::cout << duration.count() << "s" << std::endl;
+}
+```
+
+There is a better way to do this, because previous example took many lines for timing:
+```cpp
+#include <chrono>
+#include <thread>
+
+// we can setup a struct for timing
+struct Timer {
+    std::chrono::time_point<std::chrono::steady_clock> start, end;
+    std::chrono::duration<float> duration;
+
+    Timer() {
+        start = std::chrono::high_resolution_clock::now();
+    }
+
+    ~Timer() {
+        end = std::chrono::high_resolution_clock::now();
+        duration = end - start;
+        float ms = duration.count() * 1000.0f;
+        std::cout << "Timer took " << ms << "ms" << std::endl;
+    }
+}
+
+void Function() {
+    Timer timer;
+    // started timer in the constructor
+    for (int i = 0; i < 100; i++)
+        std::cout << "Done smth\n";
+    // so when going out of scope, deconstructor is called and we get the duration result then
+}
+
+int main() {
+    Function();
+}
+```
+</details>
+
+
+<details>
+<summary>Multidimensional Arrays</summary>
+
+1D Array (Single Dimension):
+```cpp
+// Stack allocation
+int array1d[50];                    // 50 integers contiguous in memory
+
+// Heap allocation  
+int* array1d = new int[50];         // 50 integers (200 bytes on 32-bit)
+delete[] array1d;                   // Cleanup
+```
+
+2D Arrays (Array of Arrays):
+Heap Allocation - Fragmented Memory
+```cpp
+// Create array of pointers (50 pointers)
+int** a2d = new int*[50];           // 50 pointers (200 bytes)
+
+// Each pointer points to its own array
+for (int i = 0; i < 50; i++) {
+    a2d[i] = new int[50];           // 50 arrays of 50 integers each
+}
+
+// Access elements
+a2d[2][3] = 42;                     // 3rd row, 4th column
+
+// Cleanup - MUST delete each sub-array first!
+for (int i = 0; i < 50; i++) {
+    delete[] a2d[i];                // Delete each integer array
+}
+delete[] a2d;                       // Then delete the pointer array
+```
+Memory Layout (Fragmented):
+```
+a2d → [ptr0] → [array0: int, int, int...]
+      [ptr1] → [array1: int, int, int...]  ← Different memory locations
+      [ptr2] → [array2: int, int, int...]
+      ...
+```
+
+3D Arrays (Array of Arrays of Arrays)
+```cpp
+// Triple pointer - array of arrays of arrays
+int*** a3d = new int**[50];         // 50 pointers to pointers
+
+for (int i = 0; i < 50; i++) {
+    a3d[i] = new int*[50];          // 50 arrays of pointers
+    
+    for (int j = 0; j < 50; j++) {
+        a3d[i][j] = new int[50];    // 50 arrays of integers
+    }
+}
+
+// Access elements
+a3d[1][2][3] = 100;                 // 2nd block, 3rd row, 4th column
+
+// Cleanup (nested loops)
+for (int i = 0; i < 50; i++) {
+    for (int j = 0; j < 50; j++) {
+        delete[] a3d[i][j];         // Delete innermost arrays
+    }
+    delete[] a3d[i];                // Delete middle arrays
+}
+delete[] a3d;                       // Delete outer array
+```
+
+Better Approach: 1D Array Simulating Multi-Dimensional
+Memory-Efficient 2D Array
+```cpp
+int width = 5, height = 5;
+int* array2d = new int[width * height];  // Single contiguous block
+
+// Access: array[x + y * width]
+for (int y = 0; y < height; y++) {
+    for (int x = 0; x < width; x++) {
+        array2d[x + y * width] = (y * 10) + x;  // Calculate position
+    }
+}
+
+// Access example:
+int value = array2d[2 + 3 * width];  // Equivalent to array2d[3][2]
+
+delete[] array2d;  // Single delete - much simpler!
+```
+
+Memory Layout (Contiguous):
+```
+[0,0] [1,0] [2,0] [3,0] [4,0] | [0,1] [1,1] [2,1] ... [4,4]
+↑--- Row 0 ---↑    ↑--- Row 1 ---↑    ...    ↑--- Row 4 ---↑
+```
+
+Modern C++ Approach with std::array and std::vector
+2D Array with std::array (Fixed Size)
+```cpp
+#include <array>
+
+// 5x5 2D array on stack
+std::array<std::array<int, 5>, 5> matrix;
+
+// Access
+matrix[2][3] = 42;
+
+// No manual cleanup needed!
+```
+
+2D Array with std::vector (Dynamic Size)
+```cpp
+#include <vector>
+
+// 5x5 2D array on heap (managed)
+std::vector<std::vector<int>> matrix(5, std::vector<int>(5));
+
+// Access
+matrix[2][3] = 42;
+
+// Automatic cleanup - no delete needed!
+```
+
+Key Takeaways
+* Multi-dimensional arrays are arrays of arrays
+* Fragmented approach (array of pointers) - flexible but poor cache performance
+* Contiguous approach (1D array) - better performance, simpler management
+* Modern C++ prefers std::vector and std::array over raw arrays
+* Always clean up heap-allocated arrays properly
+* For your router project: Use contiguous 1D arrays for performance-critical data
+
+</details>
+
+<details>
+<summary>Sorting</summary>
+
+`std::sort` is a highly optimized sorting algorithm from the C++ Standard Library with O(N log N) complexity.
+
+Basic Usage:
+```cpp
+#include <algorithm>
+#include <vector>
+#include <iostream>
+
+int main() {
+    std::vector<int> values = {3, 5, 1, 4, 2};
+    
+    // Default sorting (ascending)
+    std::sort(values.begin(), values.end());
+    
+    for (int value : values) {
+        std::cout << value << " ";  // Output: 1 2 3 4 5
+    }
+    std::cout << std::endl;
+}
+```
+
+Different Sorting Strategies
+1. Using Standard Function Objects
+```cpp
+#include <functional>  // For std::greater, std::less
+
+int main() {
+    std::vector<int> values = {3, 5, 1, 4, 2};
+    
+    // Ascending (default behavior)
+    std::sort(values.begin(), values.end());                    // 1 2 3 4 5
+    std::sort(values.begin(), values.end(), std::less<int>());  // Same as above
+    
+    // Descending
+    std::sort(values.begin(), values.end(), std::greater<int>());  // 5 4 3 2 1
+    
+    // Output results
+    for (int value : values) {
+        std::cout << value << " ";
+    }
+    std::cout << std::endl;
+}
+```
+
+2. Using Lambda Functions (Most Flexible)
+```cpp
+#include <algorithm>
+#include <vector>
+#include <iostream>
+
+int main() {
+    std::vector<int> values = {3, 5, 1, 4, 2};
+    
+    // Custom sorting with lambda
+    std::sort(values.begin(), values.end(), [](int a, int b) {
+        return a > b;  // Descending order
+    });
+    // Output: 5 4 3 2 1
+    
+    // More complex custom sorting
+    std::vector<int> values2 = {3, 5, 1, 4, 2};
+    std::sort(values2.begin(), values2.end(), [](int a, int b) {
+        // Sort by even numbers first, then odd
+        if (a % 2 == 0 && b % 2 != 0) return true;   // a even, b odd → a comes first
+        if (a % 2 != 0 && b % 2 == 0) return false;  // a odd, b even → b comes first
+        return a < b;  // Both same parity → sort normally
+    });
+    // Output: 2 4 1 3 5 (evens first, then odds, each group sorted)
+    
+    for (int value : values2) {
+        std::cout << value << " ";
+    }
+    std::cout << std::endl;
+}
+```
+
+Advanced Custom Sorting Examples
+Custom Object Sorting
+```cpp
+#include <algorithm>
+#include <vector>
+#include <string>
+#include <iostream>
+
+struct Person {
+    std::string name;
+    int age;
+    double salary;
+};
+
+int main() {
+    std::vector<Person> people = {
+        {"Alice", 30, 50000},
+        {"Bob", 25, 60000},
+        {"Charlie", 35, 45000},
+        {"Diana", 28, 55000}
+    };
+    
+    // Sort by age (ascending)
+    std::sort(people.begin(), people.end(), [](const Person& a, const Person& b) {
+        return a.age < b.age;
+    });
+    
+    std::cout << "Sorted by age:\n";
+    for (const auto& person : people) {
+        std::cout << person.name << " (" << person.age << ")\n";
+    }
+    
+    // Sort by salary (descending)
+    std::sort(people.begin(), people.end(), [](const Person& a, const Person& b) {
+        return a.salary > b.salary;
+    });
+    
+    std::cout << "\nSorted by salary (descending):\n";
+    for (const auto& person : people) {
+        std::cout << person.name << " ($" << person.salary << ")\n";
+    }
+    
+    // Multi-criteria sort: by age, then by name
+    std::sort(people.begin(), people.end(), [](const Person& a, const Person& b) {
+        if (a.age != b.age) {
+            return a.age < b.age;  // Primary: age ascending
+        }
+        return a.name < b.name;    // Secondary: name ascending
+    });
+}
+```
+
+Key Points Summary:
+* `std::sort` is highly efficient (O(N log N))
+* Default behavior: ascending order
+* Custom sorting via function objects or lambdas
+* Return true if first element should come before second
+* Lambdas are most flexible for complex sorting logic
+* Works with any container that provides random access iterato
+</details>
+
+
+<details>
+<summary>Data structurs</summary>
+
+Data structures are a universal programming concept, NOT specific to C++! They exist in virtually all programming languages.
+
+What Are Data Structures?
+Data structures are ways of organizing, storing, and managing data so that it can be used efficiently. They define the relationship between data, the operations that can be performed on the data, and how the data is stored in memory.
+
+Universal Concept Across Languages:
+| Data Structure | C++                | Python          | Java        | JavaScript         |
+|----------------|--------------------|-----------------|-------------|--------------------|
+| Array          | int arr[5]         | list            | int[]       | Array              |
+| Linked List    | Custom class       | -               | LinkedList  | -                  |
+| Stack          | std::stack         | list (as stack) | Stack       | Array (as stack)   |
+| Queue          | std::queue         | deque           | Queue       | Array (as queue)   |
+| Hash Table     | std::unordered_map | dict            | HashMap     | Object/Map         |
+| Tree           | Custom class       | -               | TreeMap     | -                  |
+
+Common Data Structures Categories
+1. Linear Data Structures
+```cpp
+// Array - Contiguous memory
+int array[5] = {1, 2, 3, 4, 5};
+
+// Linked List - Nodes with pointers
+struct Node {
+    int data;
+    Node* next;
+};
+
+// Stack - LIFO (Last In First Out)
+std::stack<int> s;
+s.push(1); s.push(2); 
+s.pop(); // Returns 2
+
+// Queue - FIFO (First In First Out)  
+std::queue<int> q;
+q.push(1); q.push(2);
+q.pop(); // Returns 1
+```
+
+2. Hierarchical Data Structures
+```cpp
+// Binary Tree
+struct TreeNode {
+    int data;
+    TreeNode* left;
+    TreeNode* right;
+};
+
+// Heap (used in priority queues)
+std::priority_queue<int> max_heap;
+```
+
+3. Hash-Based Structures:
+```cpp
+// Hash Table / Dictionary
+std::unordered_map<std::string, int> word_count;
+word_count["hello"] = 5;
+
+// Set (unique elements)
+std::unordered_set<int> unique_numbers;
+unique_numbers.insert(42);
+```
+
+Each data structure has different time complexities:
+| Operation | Array | Linked List | Hash Table | Binary Tree |
+|-----------|-------|-------------|------------|-------------|
+| Access    | O(1)  | O(n)        | O(1)       | O(log n)    |
+| Search    | O(n)  | O(n)        | O(1)       | O(log n)    |
+| Insert    | O(n)  | O(1)        | O(1)       | O(log n)    |
+| Delete    | O(n)  | O(1)        | O(1)       | O(log n)    |
+
+C++ Standard Library Data Structures:
+```cpp
+#include <vector>        // Dynamic array
+#include <array>         // Fixed-size array
+#include <list>          // Doubly-linked list
+#include <forward_list>  // Singly-linked list
+#include <deque>         // Double-ended queue
+#include <stack>         // LIFO stack
+#include <queue>         // FIFO queue
+#include <set>           // Ordered unique elements
+#include <map>           // Ordered key-value pairs
+#include <unordered_set> // Hash-based set
+#include <unordered_map> // Hash-based map
+```
+</details>
+
+
+<details>
+<summary>RAII</summary>
+
+RAII (Resource Acquisition Is Initialization) is a fundamental C++ programming technique where resource management is tied to object lifetime.
+The Core Idea - "Resource allocation happens during object construction, and deallocation happens during object destruction."
+
+Simple Explanation -
+When you create an object, it automatically acquires resources. When the object goes out of scope, it automatically releases those resources. No manual cleanup needed!
+
+Without RAII (The Problem):
+```cpp
+#include <iostream>
+
+void riskyFunction() {
+    int* array = new int[1000];  // Resource acquisition
+    
+    // ... use the array ...
+    
+    if (some_condition) {
+        return;  // ❌ MEMORY LEAK! delete[] never called
+    }
+    
+    if (another_condition) {
+        throw std::runtime_error("Error!");  // ❌ MEMORY LEAK!
+    }
+    
+    delete[] array;  // This might not be reached!
+}
+```
+
+With RAII (The Solution):
+```cpp
+#include <vector>
+#include <iostream>
+
+void safeFunction() {
+    std::vector<int> array(1000);  // Resource acquisition in constructor
+    
+    // ... use the array ...
+    
+    if (some_condition) {
+        return;  // ✅ NO LEAK! array destructor automatically called
+    }
+    
+    if (another_condition) {
+        throw std::runtime_error("Error!");  // ✅ NO LEAK! destructor called during stack unwinding
+    }
+    
+    // ✅ NO MANUAL CLEANUP! Destructor automatically called when function ends
+}
+```
+
+How RAII Works
+1. Constructor Acquires Resources
+2. Destructor Releases Resources
+3. Automatic cleanup when object goes out of scope
+
+RAII in the Standard Library
+Many STL classes use RAII:
+* `std::vector`, `std::string` - Manage memory automatically
+* `std::ifstream`, `std::ofstream` - Auto-close files
+* `std::unique_ptr`, `std::shared_ptr` - Auto-delete memory
+* `std::lock_guard`, `std::unique_lock` - Auto-unlock mutexes
+* `std::thread` - Can be joined in destructor (with careful design)
+
+RAII Benefits
+* Exception Safety - Resources always cleaned up, even if exceptions occur
+* No Resource Leaks - Impossible to forget cleanup
+* Clean Code - No manual delete, close(), unlock() calls
+* Deterministic Cleanup - You know exactly when resources are freed
+
+RAII Rule of Thumb
+* For every resource (memory, files, sockets, locks), create a class where:
+* Constructor acquires the resource
+* Destructor releases the resource
+* Use the class instead of manual resource management
+
+RAII is why C++ doesn't need garbage collection - the language guarantees cleanup through destructors!
+</details>
+
+<details>
+<summary>Type Punning</summary>
+
+```cpp
+
+```
+
+</details>
+
+<details>
 <summary><code>Something</code> keyword</summary>
 
 </details>
 
 
 Things that i need to understand:
-stack, heap, stack pointer. what even is that memory and where it exists - ram? os gives it to the program? how does it know how much
 debugging in c++
 compilators in c++
 Design Patterns (Singleton, Factory, Observer) what is this
-merge sort, bubble sort - sorting
+merge sort, bubble sort, quick sort - sorting
 what is RAII - Resource Acquisition Is Initialization, what does that mean
 
 git, git submodules, package managers used for library linking
