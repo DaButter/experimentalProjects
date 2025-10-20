@@ -1632,34 +1632,34 @@ int main() {
     std::cout << "=== INEFFICIENT WAY ===" << std::endl;
     {
         std::vector<Vertex> vertices;
-        
+
         // This creates temporary Vertex objects, then COPIES them into vector
         vertices.push_back(Vertex(1, 2, 3));  // Construct + Copy
         vertices.push_back(Vertex(4, 5, 6));  // Construct + Copy + possible reallocation
         vertices.push_back(Vertex(7, 8, 9));  // Construct + Copy + possible reallocation
     }
-    
+
     std::cout << "\n=== EFFICIENT WAY ===" << std::endl;
     {
         std::vector<Vertex> vertices;
         vertices.reserve(3);  // Pre-allocate memory for 3 elements
-        
+
         // emplace_back constructs objects IN PLACE - no copies!
         vertices.emplace_back(1, 2, 3);  // Direct construction in vector memory
         vertices.emplace_back(4, 5, 6);  // Direct construction
         vertices.emplace_back(7, 8, 9);  // Direct construction
     }
-    
+
     std::cout << "\n=== EVEN BETTER: C++11 MOVE ===" << std::endl;
     {
         std::vector<Vertex> vertices;
         vertices.reserve(3);
-        
+
         // If you already have objects, use std::move
         Vertex v1(1, 2, 3);
         Vertex v2(4, 5, 6);
         Vertex v3(7, 8, 9);
-        
+
         vertices.push_back(std::move(v1));  // Move instead of copy
         vertices.push_back(std::move(v2));
         vertices.push_back(std::move(v3));
@@ -4358,29 +4358,2005 @@ static_cast → dynamic_cast → const_cast → reinterpret_cast
 <details>
 <summary>Precompiled headers</summary>
 
-```cpp
-int main() {
+Precompiled headers (PCH) are pre-processed and pre-compiled header files that dramatically reduce compilation times for large projects.
 
+How Precompiled Headers Work
+Without Precompiled Headers:
+```
+main.cpp → #include <vector> → Parse 10,000+ lines → Compile
+other.cpp → #include <vector> → Parse 10,000+ lines → Compile
+third.cpp → #include <vector> → Parse 10,000+ lines → Compile
+```
+
+With Precompiled Headers:
+```
+pch.h → #include <vector> → Parse once → Precompile to binary
+main.cpp → #include "pch.h" → Use precompiled binary
+other.cpp → #include "pch.h" → Use precompiled binary
+third.cpp → #include "pch.h" → Use precompiled binary
+```
+
+Setting Up Precompiled Headers
+Project Structure:
+```
+MyProject/
+├── src/
+│   ├── main.cpp
+│   ├── other.cpp
+│   └── third.cpp
+├── include/
+│   └── pch.h          // Precompiled header
+└── build/
+    └── pch.pch        // Generated precompiled binary
+```
+
+pch.h (Precompiled Header File)
+```cpp
+// pch.h - Precompiled header
+#pragma once
+
+// Standard Library Headers
+#include <iostream>
+#include <vector>
+#include <string>
+#include <map>
+#include <unordered_map>
+#include <set>
+#include <memory>
+#include <algorithm>
+#include <functional>
+#include <chrono>
+#include <thread>
+#include <mutex>
+#include <fstream>
+#include <sstream>
+
+// C Headers
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <cmath>
+
+// Project-wide common headers
+#include "common_definitions.h"
+#include "logger.h"
+#include "config.h"
+
+// Third-party libraries (that don't change often)
+#include <json.hpp>
+// #include <boost/asio.hpp>
+```
+
+Source Files Using PCH
+```cpp
+// main.cpp
+#include "pch.h"  // Must be FIRST include!
+
+int main() {
+    std::vector<std::string> names = {"Alice", "Bob", "Charlie"};
+    std::cout << "Hello from main!\n";
+    
+    for (const auto& name : names) {
+        std::cout << name << std::endl;
+    }
+    
+    return 0;
 }
+```
+```cpp
+// network_manager.cpp
+#include "pch.h"  // First include - gets all STL headers
+#include "network_manager.h"  // Then project-specific headers
+
+class NetworkManager {
+private:
+    std::unordered_map<std::string, std::shared_ptr<Connection>> connections;
+    std::mutex connection_mutex;
+    
+public:
+    void addConnection(const std::string& id, std::shared_ptr<Connection> conn) {
+        std::lock_guard<std::mutex> lock(connection_mutex);
+        connections[id] = conn;
+    }
+    
+    void broadcast(const std::string& message) {
+        std::lock_guard<std::mutex> lock(connection_mutex);
+        for (const auto& [id, conn] : connections) {
+            conn->send(message);
+        }
+    }
+};
+```
+
+Compiler-Specific Setup
+GCC/Clang:
+```bash
+# Generate precompiled header
+g++ -std=c++17 pch.h -o pch.h.gch
+
+# Compile with precompiled header
+g++ -std=c++17 -include pch.h main.cpp -o main
+```
+
+Visual Studio:
+Visual Studio automatically handles precompiled headers when you:
+
+1. Set "Precompiled Header" to "Create" for pch.cpp
+2. Set "Precompiled Header" to "Use" for other files
+3. Include pch.h as first include in each .cpp file
+
+What to Put in Precompiled Headers
+```cpp
+// Stable standard library headers
+#include <vector>
+#include <string>
+#include <iostream>
+#include <memory>
+
+// Stable third-party libraries
+#include <json.hpp>
+#include <spdlog/spdlog.h>
+
+// Project headers that rarely change
+#include "common_types.h"
+#include "definitions.h"
+#include "version.h"
+```
+
+❌ Bad Candidates:
+```
+// Headers that change frequently
+#include "experimental_feature.h"  // Changes often!
+#include "debug_utils.h"           // Might change frequently
+
+// Template-heavy headers (can bloat PCH)
+#include <boost/mpl.hpp>           // Very template-heavy
+
+// Headers with complex macros
+#include "legacy_macros.h"         // Macro madness
+```
+
+Benefits of Precompiled Headers
+1. Dramatically Faster Compilation
+* Without PCH: 45 seconds compile time
+* With PCH: 8 seconds compile time (82% faster!)
+
+2. Consistent Include Order
+Forces consistent include patterns across the project.
+
+3. Reduced Parse Time
+Eliminates redundant parsing of common headers.
+
+Best Practices
+1. Include Order
+```cpp
+// ✅ CORRECT
+#include "pch.h"        // Precompiled header first
+#include "specific.h"   // Then project headers
+#include "another.h"
+
+// ❌ WRONG
+#include "specific.h"
+#include "pch.h"        // PCH must be first!
+```
+
+2. Keep PCH Stable
+* Don't include frequently changing headers
+* Review PCH contents periodically
+* Remove unused headers to reduce size
+
+3. Use in Large Projects
+* Small projects may not benefit much
+* Large projects with many translation units benefit most
+* Ideal for projects with 50+ source files
+
+4. Monitor PCH Size
+```bash
+# Check PCH file size
+ls -la pch.h.gch
+# If it's too large (100MB+), consider splitting
+```
+
+When Not to Use Precompiled Headers
+* Small projects with few files
+* Header-only libraries (they're already fast)
+* Rapid prototyping where headers change frequently
+* Cross-platform projects with very different platform headers
+
+
+Key Takeaways
+* Precompiled headers dramatically reduce compilation times
+* Include PCH first in every source file
+* Put stable, frequently used headers in PCH
+* Avoid frequently changing headers in PCH
+* Most beneficial for large projects with many files
+* Compiler-specific implementation details
+</details>
+
+
+<details>
+<summary>Dynamic casting</summary>
+
+
+`dynamic_cast` performs runtime type checking to ensure casting between polymorphic types is valid and safe.
+
+Basic Usage
+```cpp
+#include <iostream>
+#include <typeinfo>
+
+class Entity {
+public:
+    virtual ~Entity() = default;  // Must have virtual functions for dynamic_cast
+    virtual void printName() { std::cout << "Entity\n"; }
+};
+
+class Player : public Entity {
+public:
+    void printName() override { std::cout << "Player\n"; }
+    void playerSpecific() { std::cout << "Player-specific method\n"; }
+};
+
+class Enemy : public Entity {
+public:
+    void printName() override { std::cout << "Enemy\n"; }
+    void enemySpecific() { std::cout << "Enemy-specific method\n"; }
+};
+
+int main() {
+    Player* player = new Player();
+    Entity* actuallyPlayer = player;        // Entity pointer to Player object
+    Entity* actuallyEnemy = new Enemy();    // Entity pointer to Enemy object
+    
+    // ❌ DANGEROUS: C-style cast - no safety check
+    Player* dangerousCast = (Player*)actuallyEnemy;
+    // dangerousCast->playerSpecific();  // ❌ UNDEFINED BEHAVIOR! May crash
+    
+    // ✅ SAFE: dynamic_cast with runtime checking
+    Player* safeCast1 = dynamic_cast<Player*>(actuallyEnemy);  // Invalid cast
+    if (safeCast1) {
+        std::cout << "Cast to Player successful\n";
+        safeCast1->playerSpecific();
+    } else {
+        std::cout << "Cast to Player failed (as expected)\n";  // This will execute
+    }
+    
+    // ✅ VALID cast
+    Player* safeCast2 = dynamic_cast<Player*>(actuallyPlayer);  // Valid cast
+    if (safeCast2) {
+        std::cout << "Cast to Player successful\n";  // This will execute
+        safeCast2->playerSpecific();  // ✅ Safe to call
+    } else {
+        std::cout << "Cast to Player failed\n";
+    }
+    
+    delete player;
+    delete actuallyEnemy;
+}
+```
+
+Output:
+```
+Cast to Player failed (as expected)
+Cast to Player successful
+Player-specific method
+```
+
+How `dynamic_cast` Works
+Runtime Type Information (RTTI)
+```cpp
+#include <iostream>
+#include <typeinfo>
+
+class Base {
+public:
+    virtual ~Base() = default;  // Virtual functions enable RTTI
+};
+
+class Derived : public Base {};
+
+int main() {
+    Base* base = new Derived();
+    
+    // dynamic_cast uses RTTI to check actual object type
+    std::cout << "Actual type: " << typeid(*base).name() << std::endl;
+    
+    if (Derived* derived = dynamic_cast<Derived*>(base)) {
+        std::cout << "Successful dynamic_cast to Derived\n";
+    }
+    
+    delete base;
+}
+```
+
+Example: Network Protocol Handler
+```cpp
+#include <iostream>
+#include <memory>
+#include <vector>
+
+class NetworkPacket {
+public:
+    virtual ~NetworkPacket() = default;
+    virtual void process() = 0;
+};
+
+class DHCPPacket : public NetworkPacket {
+public:
+    void process() override {
+        std::cout << "Processing DHCP packet\n";
+    }
+    
+    void offerIP() {
+        std::cout << "Offering IP address to client\n";
+    }
+};
+
+class DNSPacket : public NetworkPacket {
+public:
+    void process() override {
+        std::cout << "Processing DNS query\n";
+    }
+    
+    void resolveDomain() {
+        std::cout << "Resolving domain name\n";
+    }
+};
+
+class HTTPPacket : public NetworkPacket {
+public:
+    void process() override {
+        std::cout << "Processing HTTP request\n";
+    }
+    
+    void sendResponse() {
+        std::cout << "Sending HTTP response\n";
+    }
+};
+
+class PacketProcessor {
+private:
+    std::vector<std::unique_ptr<NetworkPacket>> packetQueue;
+    
+public:
+    void addPacket(std::unique_ptr<NetworkPacket> packet) {
+        packetQueue.push_back(std::move(packet));
+    }
+    
+    void processQueue() {
+        for (auto& packet : packetQueue) {
+            packet->process();  // Common processing
+            
+            // Type-specific processing
+            if (auto* dhcp = dynamic_cast<DHCPPacket*>(packet.get())) {
+                dhcp->offerIP();  // DHCP-specific logic
+            } else if (auto* dns = dynamic_cast<DNSPacket*>(packet.get())) {
+                dns->resolveDomain();  // DNS-specific logic
+            } else if (auto* http = dynamic_cast<HTTPPacket*>(packet.get())) {
+                http->sendResponse();  // HTTP-specific logic
+            }
+        }
+        
+        packetQueue.clear();
+    }
+};
+
+int main() {
+    PacketProcessor processor;
+    
+    processor.addPacket(std::make_unique<DHCPPacket>());
+    processor.addPacket(std::make_unique<DNSPacket>());
+    processor.addPacket(std::make_unique<HTTPPacket>());
+    
+    processor.processQueue();
+}
+```
+
+Performance Considerations
+`dynamic_cast` has runtime cost:
+```cpp
+// Fast: static_cast (compile-time)
+Derived* derived = static_cast<Derived*>(base);  // No runtime check
+
+// Slow: dynamic_cast (runtime type checking)  
+Derived* derived = dynamic_cast<Derived*>(base);  // Runtime lookup
+```
+
+When to Use Each:
+```
+// Use dynamic_cast when:
+// - You're not sure about the actual type
+// - Safety is more important than performance
+// - Dealing with polymorphic hierarchies
+
+// Use static_cast when:
+// - You're certain about the type relationship  
+// - Performance is critical
+// - Dealing with non-polymorphic types
+```
+
+Key Points Summary
+* `dynamic_cast` performs runtime type checking
+* Returns `nullptr` for pointers when cast fails
+* Throws `std::bad_cast` for references when cast fails
+* Requires virtual functions in base class (RTTI)
+* Safer but slower than `static_cast`
+* Use for downcasting in polymorphic hierarchies
+* Always check result before using casted pointe
+
+When to Use `dynamic_cast`:
+
+✅ Polymorphic type checking
+
+✅ Safe downcasting when type is unknown
+
+✅ Plugin systems where types are determined at runtime
+
+✅ When safety is more important than performance
+
+When to Avoid dynamic_cast:
+
+❌ Performance-critical code
+
+❌ Non-polymorphic types (won't work)
+
+❌ When you know the exact type (use static_cast)
+
+❌ Frequent operations in tight loops
+
+</details>
+
+
+<details>
+<summary>Benchmarking in C++</summary>
+
+Benchmarking helps measure code performance to identify bottlenecks and optimize critical sections.
+
+Complete Timer Class
+```cpp
+#include <iostream>
+#include <chrono>
+#include <string>
+
+class Timer {
+public:
+    Timer(const std::string& name = "Timer") 
+        : m_Name(name), m_Stopped(false) {
+        m_StartTimePoint = std::chrono::high_resolution_clock::now();
+    }
+    
+    ~Timer() {
+        if (!m_Stopped) { // if timer.stop() is not called, then the destructor will call it
+            Stop();
+        }
+    }
+    
+    void Stop() {
+        auto endTimePoint = std::chrono::high_resolution_clock::now();
+        auto start = std::chrono::time_point_cast<std::chrono::microseconds>(m_StartTimePoint).time_since_epoch().count();
+        auto end = std::chrono::time_point_cast<std::chrono::microseconds>(endTimePoint).time_since_epoch().count();
+        
+        auto duration = end - start;
+        double ms = duration * 0.001;
+        
+        std::cout << m_Name << ": " << duration << "us (" << ms << "ms)\n";
+        m_Stopped = true;
+    }
+
+private:
+    std::chrono::time_point<std::chrono::high_resolution_clock> m_StartTimePoint;
+    std::string m_Name;
+    bool m_Stopped;
+};
+```
+
+Basic Benchmarking Usage
+```cpp
+#include <iostream>
+#include <vector>
+
+void simpleBenchmark() {
+    int value = 0;
+    
+    {
+        Timer timer("Simple Loop");
+        for (int i = 0; i < 1000000; i++) {
+            value += 2;
+        }
+    }
+    
+    std::cout << "Value: " << value << std::endl;
+}
+```
+
+Preventing Compiler Optimization
+The Problem:
+```cpp
+// Compiler might optimize this entire loop away!
+{
+    Timer timer("Optimized Away");
+    int result = 0;
+    for (int i = 0; i < 1000000; i++) {
+        result += i;  // Result never used - compiler removes loop!
+    }
+    // No output of result = loop eliminated
+}
+```
+
+Solutions:
+```cpp
+#include <iostream>
+
+void preventOptimization() {
+    // Method 1: Use the result
+    {
+        Timer timer("Method 1 - Use Result");
+        int result = 0;
+        for (int i = 0; i < 1000000; i++) {
+            result += i;
+        }
+        std::cout << "Result: " << result << std::endl;  // Force usage
+    }
+    
+    // Method 2: volatile keyword
+    {
+        Timer timer("Method 2 - volatile");
+        volatile int result = 0;  // Prevents some optimizations
+        for (int i = 0; i < 1000000; i++) {
+            result += i;
+        }
+    }
+    
+    // Method 3: External function
+    {
+        Timer timer("Method 3 - External Function");
+        int result = 0;
+        for (int i = 0; i < 1000000; i++) {
+            result += i;
+        }
+        // Assume doSomething prevents optimization
+        // doSomething(result);
+    }
+}
+```
+
+Key Takeaways
+* Use RAII timers for automatic measurement
+* Prevent compiler optimization of benchmarked code
+* Run multiple iterations for statistical significance
+* Measure in release mode with optimizations enabled
+* Control testing environment for consistent results
+* Use `__debugbreak()` for debugging during benchmarking (Visual Studio Code specific instruction)
+
+</details>
+
+
+<details>
+<summary>Structured bindings</summary>
+
+Structured bindings provide a clean, readable way to unpack tuples, pairs, and other structured data.
+
+Before C++17: The Verbose Ways
+Method 1: `std::get` with Indexes
+```cpp
+#include <tuple>
+#include <string>
+#include <iostream>
+
+std::tuple<std::string, int, std::string> CreatePerson() {
+    return {"Cherno", 24, "Game Developer"};
+}
+
+int main() {
+    auto person = CreatePerson();
+    
+    // ❌ Verbose and error-prone
+    std::string& name = std::get<0>(person);     // Hard to remember indexes
+    int age = std::get<1>(person);               // What if order changes?
+    std::string& job = std::get<2>(person);      // Easy to mix up indexes
+    
+    std::cout << name << " is " << age << " years old and works as a " << job << std::endl;
+}
+```
+
+Method 2: std::tie (Slightly Better)
+```cpp
+#include <tuple>
+#include <string>
+#include <iostream>
+
+std::tuple<std::string, int, std::string> CreatePerson() {
+    return {"Cherno", 24, "Game Developer"};
+}
+
+int main() {
+    // ❌ Still verbose - need to pre-declare variables
+    std::string name;
+    int age;
+    std::string job;
+    
+    std::tie(name, age, job) = CreatePerson();  // Bind to existing variables
+    
+    std::cout << name << " is " << age << " years old and works as a " << job << std::endl;
+}
+```
+
+C++17: Structured Bindings (The Modern Way)
+Basic Usage
+```cpp
+#include <tuple>
+#include <string>
+#include <iostream>
+
+std::tuple<std::string, int, std::string> CreatePerson() {
+    return {"Cherno", 24, "Game Developer"};
+}
+
+int main() {
+    // ✅ Clean and readable - auto-declares variables
+    auto [name, age, job] = CreatePerson();
+    
+    std::cout << name << " is " << age << " years old and works as a " << job << std::endl;
+    // Output: Cherno is 24 years old and works as a Game Developer
+}
+```
+
+What Structured Bindings Work With
+1. `std::tuple`, `std::pair`
+```cpp
+#include <tuple>
+#include <pair>
+#include <iostream>
+
+auto GetUserStats() {
+    return std::make_tuple("Alice", 85.5, 42);  // name, score, level
+}
+
+auto GetConnectionInfo() {
+    return std::make_pair("192.168.1.1", 8080);  // ip, port
+}
+
+int main() {
+    // Tuple unpacking
+    auto [username, score, level] = GetUserStats();
+    std::cout << username << ": Level " << level << ", Score " << score << std::endl;
+    
+    // Pair unpacking  
+    auto [ip, port] = GetConnectionInfo();
+    std::cout << "Connecting to " << ip << ":" << port << std::endl;
+}
+```
+
+2. Arrays
+```cpp
+#include <iostream>
+
+int main() {
+    int coordinates[3] = {10, 20, 30};
+    
+    auto [x, y, z] = coordinates;  // Unpack array elements
+    
+    std::cout << "Position: (" << x << ", " << y << ", " << z << ")" << std::endl;
+    // Output: Position: (10, 20, 30)
+}
+```
+
+3. Structs and Classes
+```cpp
+#include <iostream>
+#include <string>
+
+struct Person {
+    std::string name;
+    int age;
+    std::string occupation;
+};
+
+struct Point3D {
+    double x, y, z;
+};
+
+Person CreatePerson() {
+    return {"Bob", 30, "Engineer"};
+}
+
+Point3D GetPosition() {
+    return {5.5, 10.2, 15.8};
+}
+
+int main() {
+    // Struct unpacking
+    auto [name, age, job] = CreatePerson();
+    std::cout << name << " is a " << age << "-year-old " << job << std::endl;
+    
+    auto [x, y, z] = GetPosition();
+    std::cout << "3D Position: (" << x << ", " << y << ", " << z << ")" << std::endl;
+}
+```
+
+
+Practical Examples:
+```cpp
+#include <tuple>
+#include <string>
+#include <iostream>
+#include <utility>
+
+// Function returning multiple network settings
+auto GetNetworkConfig() {
+    return std::make_tuple("192.168.1.1", "255.255.255.0", "8.8.8.8", 1500);
+    // ip, subnet, gateway, mtu
+}
+
+int main() {
+    auto [ip_address, subnet_mask, gateway, mtu] = GetNetworkConfig();
+    
+    std::cout << "Network Configuration:\n";
+    std::cout << "IP: " << ip_address << "\n";
+    std::cout << "Subnet: " << subnet_mask << "\n"; 
+    std::cout << "Gateway: " << gateway << "\n";
+    std::cout << "MTU: " << mtu << "\n";
+}
+```
+</details>
+
+<details>
+<summary>How to deal with optional data</summary>
+
+`std::optional` is new in C++17.
+
+Before:
+```cpp
+#include <iostream>
+#include <fstream>
+
+std::string ReadFileAsString(const std::string& filepath, bool& outSuccess) {
+    std::ifstream stream(filepath);
+    if (stream) {
+        std::string result;
+        // read file
+        stream.close();
+        outSuccess = true;
+        return result;
+    } 
+    // what to return if file reading was succesfull?
+    outSuccess = false;
+    return std::string();
+}
+
+int main() {
+    bool fileOpenedSuccessfully;
+    std::string data = ReadFileAsString("data.txt", fileOpenedSuccessfully);
+    if (data != "") {
+        // do smth if no data
+    }
+}
+```
+
+After:
+```cpp
+#include <iostream>
+#include <fstream>
+#include <optional>
+
+std::optional<std::string> ReadFileAsString(const std::string& filepath) {
+    std::ifstream stream(filepath);
+    if (stream) {
+        std::string result;
+        // read file
+        stream.close();
+        return result;
+    } 
+    // what to return if file reading was succesfull?
+    return {};
+}
+
+int main() {
+    std::optional<std::string> data = ReadFileAsString("data.txt"); // or use auto for type
+    std::string value = data.value_or("Not present"); // if data not present, "Not present" is added as data
+
+    // std::optional<int> count;
+    // int c = count.value_or(100);
+
+    if (data) { // or this data.has_value() 
+        std::cout << "File read successfully\n";
+        // std::string& string = *data; // we can access it like this ?
+    } else {
+        std::cout << "File read unsuccessfully\n";
+    }
+}
+```
+</details>
+
+
+
+<details>
+<summary>Multiple types of data in a single variable</summary>
+
+This is new in C++17: `std::variant`
+
+```cpp
+#include <iostream>
+#include <variant>
+
+int main() {
+    std::variant<std::string, int> data;
+    data = "Cherno";
+    // to get data:
+    std::cout << std::get<std::string>(data) << "\n";
+    data = 2;
+    std::cout << std::get<std::int>(data) << "\n";
+
+    // what happens if we mess up and try to access an invalid type? variant returns std::bad_variant_access exception, we can try catch
+    // but a better way is to check the mapped index to variant
+    data.index() // string returns 0, int returns 1
+
+    // another way:
+    auto value = std::get_if<std::string>(&data); // if invalid, returns NULL, valid returns pointer to string
+}
+```
+</details>
+
+<details>
+<summary>How to store any data in C++</summary>
+
+`std::any` - new in C++17
+`std::variant` - we needed to list the types, for any we do not.
+
+```cpp
+#include <any>
+
+int main() {
+    std::any data;
+    // it can be set to anything
+    data = 2;
+    data = "Cherno";
+    data = std::string("Cherno");
+
+    // if you want to get the data, you need to know the type:
+    std::string what = std::any_cast<std::string>(data); // this would throw an exception, because data is const char*, not string
+}
+```
+</details>
+
+<details>
+<summary><code>std::async</code></summary>
+
+`std::async` is used for asynchronous task execution and simple parallel processing. It runs a function asynchronously (potentially in a separate thread) and returns a `std::future` that will hold the result.
+
+Basic Syntax
+```cpp
+#include <iostream>
+#include <future>
+#include <chrono>
+
+// Example 1: Simple async function
+int simpleTask(int x, int y) {
+    std::this_thread::sleep_for(std::chrono::seconds(1)); // Simulate work
+    return x + y;
+}
+
+int main() {
+    // Launch async task - may execute in separate thread
+    std::future<int> result = std::async(std::launch::async, simpleTask, 10, 20);
+    
+    // Do other work here while async task runs...
+    std::cout << "Doing other work...\n";
+    
+    // Get the result (blocks until ready)
+    int value = result.get();
+    std::cout << "Result: " << value << std::endl; // Output: Result: 30
+    
+    return 0;
+}
+```
+
+Launch Policies
+```cpp
+#include <future>
+#include <iostream>
+
+int compute(int n) {
+    int sum = 0;
+    for (int i = 0; i < n; ++i) {
+        sum += i;
+    }
+    return sum;
+}
+
+int main() {
+    // Option 1: std::launch::async - Run in separate thread
+    auto future1 = std::async(std::launch::async, compute, 1000000);
+    
+    // Option 2: std::launch::deferred - Run lazily when get() is called
+    auto future2 = std::async(std::launch::deferred, compute, 1000000);
+    
+    // Option 3: Let implementation decide (default)
+    auto future3 = std::async(compute, 1000000);
+    
+    std::cout << "Async task launched\n";
+    
+    // future1 might be running concurrently
+    // future2 will only run when we call get()
+    int result = future1.get();
+    std::cout << "Result: " << result << std::endl;
+    
+    return 0;
+}
+```
+</details>
+
+
+<details>
+<summary>Singletons</summary>
+
+A Singleton ensures a class has only one instance and provides global access to that instance.
+It's useful for organizing global data and functions into a single managed instance.
+
+Basic Singleton Implementation
+```cpp
+#include <iostream>
+
+class Singleton {
+public:
+    // Delete copy constructor to prevent creating new instances
+    Singleton(Singleton&) = delete;
+    
+    // Static method to access the single instance
+    static Singleton& Get() {
+        return s_Instance;  // Returns reference to the static instance
+    }
+    
+    void Function() {
+        std::cout << "Singleton function called\n";
+    }
+
+private:
+    Singleton() {}  // Private constructor prevents external instantiation
+    float m_Member = 0.0f;
+    static Singleton s_Instance;  // Static instance member
+};
+
+// Define the static member (required)
+Singleton Singleton::s_Instance;
+
+int main() {
+    // Access the singleton instance and call its method
+    Singleton::Get().Function();
+    return 0;
+}
+```
+
+Practical Example: Random Number Generator
+```cpp
+#include <iostream>
+#include <random>
+
+class Random {
+public:
+    Random(Random&) = delete;  // Prevent copying
+    
+    static Random& Get() {
+        return s_Instance;
+    }
+    
+    // Public interface for random number generation
+    int Int(int min, int max) {
+        std::uniform_int_distribution distribution(min, max);
+        return distribution(m_RandomEngine);
+    }
+    
+    float Float(float min, float max) {
+        std::uniform_real_distribution distribution(min, max);
+        return distribution(m_RandomEngine);
+    }
+
+private:
+    Random() {
+        // Seed with proper random device
+        std::random_device rd;
+        m_RandomEngine.seed(rd());
+    }
+    
+    std::mt19937 m_RandomEngine;
+    static Random s_Instance;
+};
+
+Random Random::s_Instance;
+
+int main() {
+    // Use the singleton random generator
+    std::cout << "Random int: " << Random::Get().Int(1, 100) << std::endl;
+    std::cout << "Random float: " << Random::Get().Float(0.0f, 1.0f) << std::endl;
+    
+    return 0;
+}
+```
+
+Alternative Implementation (Meyer's Singleton)
+```cpp
+class MeyerSingleton {
+public:
+    MeyerSingleton(MeyerSingleton&) = delete;
+    
+    // Instance created on first call (lazy initialization)
+    static MeyerSingleton& Get() {
+        static MeyerSingleton instance;
+        return instance;
+    }
+    
+    void DoSomething() {
+        std::cout << "Meyer's singleton\n";
+    }
+
+private:
+    MeyerSingleton() = default;
+};
+
+int main() {
+    MeyerSingleton::Get().DoSomething();
+}
+```
+
+Key Characteristics
+* Private Constructor: Prevents external object creation
+* Deleted Copy Constructor: Prevents creating new instances via copying
+* Static Instance: Single instance stored as static member
+* Static Access Method: Global point of access via Get() method
+
+When to Use Singletons
+* Global configuration settings
+* Logging systems
+* Resource managers (database connections, thread pools)
+* Hardware access (printers, audio devices)
+
+Advantages
+* Controlled access to single instance
+* Reduced global variables by encapsulating related functionality
+* Lazy initialization (with Meyer's approach)
+* Thread-safe (with proper implementation)
+
+Disadvantages
+* Global state can make testing difficult
+* Hidden dependencies
+* Potential threading issues if not implemented carefully
+
+Important Notes
+* Use references (Singleton&) not pointers to prevent null issues
+* Consider Meyer's singleton for thread safety in C++11+
+* Be cautious of static initialization order issues
+* Singletons are essentially fancy global variables - use sparingly
+</details>
+
+<details>
+<summary>Small string optimization (SSO)</summary>
+
+std::string Memory Allocation
+It uses both stack and heap, but the actual character data is typically on the heap.
+
+Small String Optimization (SSO)
+Most modern C++ implementations use Small String Optimization:
+```cpp
+#include <iostream>
+#include <string>
+
+int main() {
+    std::string short_str = "Austris";  // 7 characters
+    std::string long_str = "AustrisAustrisAustrisAustris";  // 28 characters
+
+    std::cout << "Short string capacity: " << short_str.capacity() << std::endl;
+    std::cout << "Long string capacity: " << long_str.capacity() << std::endl;
+
+    return 0;
+}
+```
+
+How It Works
+For Small Strings (typically ≤ 15 chars):
+```cpp
+std::string data = "Austris";  // 7 characters
+```
+* Stack: The entire string object (including character data) fits in a small buffer within the std::string object itself
+* No heap allocation occurs
+* Fast construction/destruction
+
+For Large Strings:
+```cpp
+data = "AustrisAustrisAustrisAustris";  // 28 characters
+```
+* Stack: The std::string object itself (contains pointer, size, capacity)
+* Heap: The actual character data is allocated on the heap
+* The stack object contains a pointer to the heap memory
+
+Memory Layout Example
+```cpp
+#include <iostream>
+#include <string>
+
+void analyze_string(const std::string& str, const std::string& name) {
+    std::cout << name << ":\n";
+    std::cout << "  Content: " << str << "\n";
+    std::cout << "  Size: " << str.size() << "\n";
+    std::cout << "  Capacity: " << str.capacity() << "\n";
+    std::cout << "  Address of string object: " << &str << "\n";
+    std::cout << "  Address of data: " << (void*)str.data() << "\n";
+    std::cout << "  Is likely on heap: " 
+              << ((void*)str.data() < (void*)&str ? "Probably" : "Probably not") 
+              << std::endl;
+}
+
+int main() {
+    std::string short_str = "Hi";
+    std::string long_str = "This is a very long string that definitely exceeds SSO buffer";
+    
+    analyze_string(short_str, "Short string");
+    std::cout << "---\n";
+    analyze_string(long_str, "Long string");
+    
+    return 0;
+}
+```
+
+Resizing Behavior
+```cpp
+#include <iostream>
+#include <string>
+
+int main() {
+    std::string data = "Austris";  // Likely SSO - no heap allocation
+    
+    std::cout << "Initial - Size: " << data.size() 
+              << ", Capacity: " << data.capacity() << std::endl;
+    
+    // This may trigger heap allocation
+    data = "AustrisAustrisAustrisAustris";
+    
+    std::cout << "After reassignment - Size: " << data.size() 
+              << ", Capacity: " << data.capacity() << std::endl;
+    
+    // Growing beyond current capacity
+    data += "MoreAndMoreTextToForceReallocation";
+    
+    std::cout << "After growth - Size: " << data.size() 
+              << ", Capacity: " << data.capacity() << std::endl;
+    
+    return 0;
+}
+```
+
+What Happens During Resize
+1. If new size ≤ current capacity:
+* Just update the size and null terminator
+* No reallocation needed
+
+2. If new size > current capacity:
+* Allocate new, larger buffer on heap
+* Copy existing characters to new buffer
+* Copy new characters to new buffer
+* Delete old buffer (if it was on heap)
+* Update pointer, size, and capacity
+
+Demonstration of Resize
+```cpp
+#include <iostream>
+#include <string>
+
+int main() {
+    std::string str;
+    
+    for (int i = 0; i < 10; ++i) {
+        size_t old_capacity = str.capacity();
+        str += "Chunk";  // Add 5 characters
+        
+        std::cout << "Size: " << str.size() 
+                  << ", Capacity: " << str.capacity();
+        
+        if (str.capacity() > old_capacity) {
+            std::cout << " *** REALLOCATED ***";
+        }
+        std::cout << std::endl;
+    }
+    
+    return 0;
+}
+```
+
+Key Points
+* Small strings: Entirely on stack (thanks to SSO)
+* Large strings: Object on stack, data on heap
+* Resizing: May trigger heap allocation and data copying
+* Capacity: Usually grows exponentially (e.g., double when needed) to amortize cost
+* Implementation-dependent: Exact SSO threshold varies by compiler
+
+So in your example, "Austris" likely uses SSO (stack), while "AustrisAustrisAustrisAustris" likely triggers heap allocation!
+</details>
+
+
+
+<details>
+<summary>Tracking memory allocations</summary>
+
+```cpp
+#include <iostream>
+#include <memory>
+
+struct AllocationMetrics {
+    uint32_t TotalAllocated = 0;
+    uint32_t TotalFreed = 0;
+    uint32_t CurrentUsage { return TotalAllocated - TotalFreed; };
+}
+
+static AlocationMetrics s_AllocationMetrics;
+
+// overriding new operator
+void* operator new(size_t size) {
+    std::cout << "Allocating " << size << " bytes\n";
+    s_AllocationMetrics.TotalAllocated += size;
+    return malloc(size);
+}
+
+// overriding delete operator
+void operator delete(void* memory, size_t size) {
+    std::cout << "Freeing " << size << " bytes\n";
+    s_AllocationMetrics.TotalFreed += size;
+    free(memory);
+}
+
+static void PrintMemoryUsage() {
+    std::cout << "Mmeory Usage: " << s_AllocationMetrics.CurrentUsage() << " bytes\n";
+}
+
+struct Object {
+    int x,y,z;
+}
+
+int main() {
+    std::string name = "Cherno"; // if SSO does not happen, we can see when string is allocated in heap
+    PrintMemoryUsage();
+    std::unique_ptr<Object> obj = std::make_unique<Object>(); // we also see then the object is allocated on the heap here
+    PrintMemoryUsage();
+}
+```
+</details>
+
+
+<details>
+<summary>lvalues and rvalues</summary>
+Basic Definitions
+
+* lvalue: Has a memory address, can appear on left side of assignment
+* rvalue: Temporary value, no persistent memory address, appears on right side
+
+Example 1: Basic lvalue/rvalue behavior
+```cpp
+int GetValue() {
+    return 10;  // Returns rvalue
+}
+
+int& GetValue2() {
+    static int value = 10;
+    return value;  // Returns lvalue reference
+}
+
+int main() {
+    int i = 10;        // i is lvalue, 10 is rvalue
+    int b = GetValue(); // b is lvalue, GetValue() returns rvalue
+
+    int a = i;         // Both lvalues (copying value)
+
+    // GetValue() = 5;  // ERROR: Can't assign to rvalue
+
+    GetValue2() = 5;   // WORKS: Returns lvalue reference
+}
+```
+
+Example 2: Function Parameter Passing
+```cpp
+void SetValue(int value) {}  // Takes by value (accepts both)
+
+void SetValueRef(int& value) {}       // Takes lvalue reference only
+void SetValueConstRef(const int& value) {}  // Takes both (const reference)
+
+int main() {
+    int i = 10;
+    SetValue(i);     // OK: lvalue passed by value
+    SetValue(10);    // OK: rvalue passed by value
+    
+    SetValueRef(i);  // OK: lvalue to lvalue reference
+    // SetValueRef(10); // ERROR: rvalue to non-const reference
+    
+    SetValueConstRef(i);  // OK: lvalue to const reference  
+    SetValueConstRef(10); // OK: rvalue to const reference
+}
+```
+
+Example 3: lvalue and rvalue Reference Overloads
+```cpp
+void PrintName(const std::string& name) {  // Accepts lvalues
+    std::cout << "[lvalue] " << name << std::endl;
+}
+
+void PrintName(std::string&& name) {  // Accepts rvalues only
+    std::cout << "[rvalue] " << name << std::endl;
+}
+
+int main() {
+    std::string firstName = "Austris";    // lvalue
+    std::string lastName = "Eglitis";     // lvalue  
+    std::string fullName = firstName + lastName;  // lvalue
+    
+    PrintName(fullName);              // Calls lvalue version
+    PrintName(firstName + lastName);  // Calls rvalue version (temporary)
+    
+    PrintName("Literal");             // Calls rvalue version
+}
+```
+
+Key Rules
+lvalues:
+* Have persistent memory addresses
+* Can be assigned to
+* Can have their address taken with &
+* Examples: variables, function returning references
+
+rvalues:
+* Temporary values
+* Cannot be assigned to
+* Cannot have address taken
+* Examples: literals, function returning by value, temporary expressions
+
+Reference Types:
+* `Type&` - lvalue reference (binds to lvalues only)
+* `const Type&` - const lvalue reference (binds to both)
+* `Type&&` - rvalue reference (binds to rvalues only)
+
+Practical Uses
+```cpp
+// Move semantics - efficient transfer of resources
+class String {
+    String(String&& other) {  // rvalue reference
+        // Steal resources from 'other'
+    }
+};
+
+// Perfect forwarding
+template<typename T>
+void Forward(T&& arg) {  // Universal reference
+    // Can forward as lvalue or rvalue
+}
+```
+
+Quick Reference
+
+| Expression                   | Type    | Can Assign | Can Take Address  |
+|------------------------------|---------|------------|-------------------|
+| int x = 5                    | lvalue  | ✅         | ✅               |
+| x = 10                       | lvalue  | ✅         | ✅               |
+| 5                            | rvalue  | ❌         | ❌               |
+| x + 1                        | rvalue  | ❌         | ❌               |
+| func() (returns value)       | rvalue  | ❌         | ❌               |
+| func() (returns reference)   | lvalue  | ✅         | ✅               |
+</details>
+
+
+<details>
+<summary>Move semantics</summary>
+
+Move semantics allow us to transfer resources from one object to another instead of copying them.
+This is especially useful for expensive operations like memory allocations, file handles, or network connections.
+
+**The Problem: Unnecessary Copies**
+
+Before move semantics, this would create multiple copies:
+```cpp
+String CreateString() {
+    String temp("Hello");
+    return temp;  // Before C++11: Copy! After C++11: Move!
+}
+
+int main() {
+    String s = CreateString();  // Could involve multiple copies
+}
+```
+
+**The Solution: Move Constructor and Rvalue References**
+
+Example
+```cpp
+#include <iostream>
+#include <cstring>
+
+class String {
+public:
+    String() = default;
+    
+    // Regular constructor
+    String(const char* string) {
+        printf("Created!\n");
+        m_Size = strlen(string);
+        m_Data = new char[m_Size + 1];  // +1 for null terminator
+        memcpy(m_Data, string, m_Size);
+        m_Data[m_Size] = '\0';
+    }
+
+    // Copy constructor (deep copy)
+    String(const String& other) {
+        printf("Copied!\n");
+        m_Size = other.m_Size;
+        m_Data = new char[m_Size + 1];
+        memcpy(m_Data, other.m_Data, m_Size + 1);
+    }
+
+    // MOVE CONSTRUCTOR - The key to move semantics!
+    String(String&& other) noexcept {  // noexcept is important for optimization
+        printf("Moved!\n");
+
+        // STEAL the resources from the other object
+        m_Size = other.m_Size;
+        m_Data = other.m_Data;  // Just copy the pointer, no new allocation!
+
+        // IMPORTANT: Leave the other object in valid but empty state
+        other.m_Size = 0;
+        other.m_Data = nullptr;  // So it won't delete our stolen data
+    }
+
+    // Move assignment operator
+    String& operator=(String&& other) noexcept {
+        printf("Move assigned!\n");
+
+        if (this != &other) {  // Self-assignment check
+            delete[] m_Data;   // Clean up our current resources
+
+            // Steal from other
+            m_Size = other.m_Size;
+            m_Data = other.m_Data;
+
+            // Reset other
+            other.m_Size = 0;
+            other.m_Data = nullptr;
+        }
+        return *this;
+    }
+
+    ~String() {
+        printf("Destroyed!\n");
+        delete[] m_Data;  // Use delete[] for arrays!
+    }
+
+    void Print() const {
+        if (m_Data) {
+            for (uint32_t i = 0; i < m_Size; i++)
+                printf("%c", m_Data[i]);
+            printf("\n");
+        } else {
+            printf("(empty string)\n");
+        }
+    }
+
+private:
+    char* m_Data = nullptr;
+    uint32_t m_Size = 0;
+};
+
+class Entity {
+public:
+    // Constructor for lvalues (copies)
+    Entity(const String& name) : m_Name(name) {  // Calls copy constructor
+        printf("Entity created with copy\n");
+    }
+
+    // Constructor for rvalues (moves)
+    Entity(String&& name) : m_Name(std::move(name)) {  // Calls move constructor (or can write m_Name(String&&(name)))
+        printf("Entity created with move\n");
+    }
+
+    void PrintName() {
+        m_Name.Print();
+    }
+
+private:
+    String m_Name;
+};
+
+int main() {
+    printf("=== Example 1: Temporary String ===\n");
+    Entity entity1(String("Cherno"));  // String is temporary → moved!
+    entity1.PrintName();
+
+    printf("\n=== Example 2: Named String ===\n");
+    String name("Austris");
+    Entity entity2(name);  // String is named → copied!
+
+    printf("\n=== Example 3: Explicit Move ===\n");
+    String anotherName("John");
+    Entity entity3(std::move(anotherName));  // Explicit move
+    entity3.PrintName();
+    
+    printf("Original string after move: ");
+    anotherName.Print();  // Will print "(empty string)"
+
+    return 0;
+}
+```
+
+Key Concepts Explained:
+
+1. Rvalue References (`&&`)
+```cpp
+String(String&& other)  // && means rvalue reference
+```
+* Binds only to temporary objects (rvalues)
+* Signals that the object can be "moved from"
+* Examples of rvalues: `String("temp")`, `std::move(x)`, function returns
+
+
+2. The Move Constructor
+```cpp
+String(String&& other) noexcept {
+    // Steal resources
+    m_Size = other.m_Size;
+    m_Data = other.m_Data;  // No new allocation!
+
+    // Leave other in valid state
+    other.m_Size = 0;
+    other.m_Data = nullptr;
+}
+```
+
+3. `std::move()`
+```cpp
+Entity entity3(std::move(anotherName));
+```
+* Doesn't actually move anything - it's just a cast
+* Converts lvalue to rvalue reference
+* Marks object as "ready to be moved from"
+
+4. Important Rules for Move Operations:
+
+✅ Do:
+* Steal resources instead of copying
+* Leave source in valid state (usually empty)
+* Use noexcept for better performance
+* Check for self-assignment
+
+❌ Don't:
+* Access moved-from objects (except destruction)
+* Forget to nullify source pointers
+* Use delete instead of delete[] for arrays
+
+
+When Move Semantics Happen Automatically:
+```cpp
+String CreateString() {
+    String local("Hello");
+    return local;  // Automatically moves (if move constructor exists)
+}
+
+String ProcessString(String input) {
+    // input can be moved from here
+    return input;  // Automatically moves
+}
+
+int main() {
+    // These all use move semantics:
+    String s1 = CreateString();           // Move from return value
+    String s2 = String("Temporary");      // Move from temporary
+    String s3 = std::move(s1);            // Explicit move
+}
+```
+
+Summary
+
+Move semantics allow us to:
+1. Transfer ownership of resources efficiently
+2. Avoid expensive copies of large objects
+3. Work with temporary objects optimally
+4. Write more performant code with the same safety
+
+Key syntax:
+* `Type&&` - rvalue reference
+* `std::move()` - cast to rvalue
+* Move constructor/assignment - implement resource transfer
+
+Move semantics are fundamental to modern C++ performance and are used extensively in the standard library (`std::vector`, `std::string`, etc.).
+
+</details>
+
+<details>
+<summary><code>std::move</code> and move assignment operator</summary>
+
+
+
+```cpp
+
 ```
 
 </details>
 
 
 <details>
-<summary><code>Something</code> keyword</summary>
+<summary>Maps in C++</summary>
+
+Key Differences
+`std::map`: Ordered (red-black tree), slower O(log n) operations
+`std::unordered_map`: Unordered (hash table), faster O(1) operations, preferred when order doesn't matter
+
+Example 1: Inefficient Linear Search with Vector
+```cpp
+#include <iostream>
+#include <vector>
+#include <string>
+
+struct CityRecord {
+    std::string Name;
+    uint64_t Population;
+    double Latitude, Longitude;
+
+    // Constructor for easy initialization
+    CityRecord(const std::string& name, uint64_t pop, double lat, double lon)
+        : Name(name), Population(pop), Latitude(lat), Longitude(lon) {}
+};
+
+int main() {
+    std::vector<CityRecord> cities;
+
+    // Add cities to vector
+    cities.emplace_back("Melbourne", 5000000, -37.8136, 144.9631);
+    cities.emplace_back("Berlin", 3769000, 52.5200, 13.4050);
+    cities.emplace_back("Riga", 632000, 56.9496, 24.1052);
+    cities.emplace_back("Lol-town", 1000, 0.0, 0.0);
+    cities.emplace_back("London", 8982000, 51.5074, -0.1278);
+
+    // INEFFICIENT: Linear search O(n)
+    for (const auto& city : cities) {
+        if (city.Name == "Riga") {
+            std::cout << "Population of Riga: " << city.Population << std::endl;
+            break;
+        }
+    }
+
+    return 0;
+}
+```
+
+Example 2: Efficient Lookup with std::map
+```cpp
+#include <iostream>
+#include <map>
+#include <string>
+
+struct CityRecord {
+    std::string Name;
+    uint64_t Population;
+    double Latitude, Longitude;
+    
+    CityRecord(const std::string& name, uint64_t pop, double lat, double lon)
+        : Name(name), Population(pop), Latitude(lat), Longitude(lon) {}
+};
+
+int main() {
+    // std::map - automatically sorts by key (city name)
+    std::map<std::string, CityRecord> cityMap;
+    
+    // Insert cities - key is city name, value is CityRecord object
+    cityMap["Melbourne"] = CityRecord{"Melbourne", 5000000, -37.8136, 144.9631};
+    cityMap["Berlin"] = CityRecord{"Berlin", 3769000, 52.5200, 13.4050};
+    cityMap["Riga"] = CityRecord{"Riga", 632000, 56.9496, 24.1052};
+    cityMap["Lol-town"] = CityRecord{"Lol-town", 1000, 0.0, 0.0};
+    cityMap["London"] = CityRecord{"London", 8982000, 51.5074, -0.1278};
+
+    // EFFICIENT: Direct access O(log n)
+    CityRecord& berlinData = cityMap["Berlin"];  // Get reference to avoid copy
+
+    // Modify data through reference
+    berlinData.Population = 4000000;  // This updates the actual map entry!
+    std::cout << "Berlin population: " << cityMap["Berlin"].Population << std::endl;
+
+    // Remove an entry
+    cityMap.erase("Berlin");
+    
+    // Check if key exists (safer than direct access)
+    if (cityMap.find("Berlin") == cityMap.end()) {
+        std::cout << "Berlin was removed from the map" << std::endl;
+    }
+
+    return 0;
+}
+```
+
+Example 3: Even Faster with std::unordered_map
+```cpp
+#include <iostream>
+#include <unordered_map>
+#include <string>
+
+struct CityRecord {
+    std::string Name;
+    uint64_t Population;
+    double Latitude, Longitude;
+
+    CityRecord(const std::string& name, uint64_t pop, double lat, double lon)
+        : Name(name), Population(pop), Latitude(lat), Longitude(lon) {}
+};
+
+int main() {
+    // std::unordered_map - faster hash table, no ordering
+    std::unordered_map<std::string, CityRecord> cityMap;
+    
+    // Same syntax as std::map
+    cityMap["Melbourne"] = CityRecord{"Melbourne", 5000000, -37.8136, 144.9631};
+    cityMap["Berlin"] = CityRecord{"Berlin", 3769000, 52.5200, 13.4050};
+    cityMap["Riga"] = CityRecord{"Riga", 632000, 56.9496, 24.1052};
+
+    // FASTEST: O(1) average case access
+    CityRecord& rigaData = cityMap["Riga"];
+    std::cout << "Riga latitude: " << rigaData.Latitude << std::endl;
+
+    // Iterate (order is arbitrary)
+    std::cout << "\nAll cities in unordered_map:" << std::endl;
+    for (const auto& [name, city] : cityMap) {
+        std::cout << name << ": " << city.Population << std::endl;
+    }
+
+    return 0;
+}
+```
+
+Example 4: Custom Hash for Unordered Map
+```cpp
+#include <iostream>
+#include <unordered_map>
+#include <string>
+
+struct CityRecord {
+    std::string Name;
+    uint64_t Population;
+    double Latitude, Longitude;
+    
+    CityRecord(const std::string& name, uint64_t pop, double lat, double lon)
+        : Name(name), Population(pop), Latitude(lat), Longitude(lon) {}
+};
+
+// Custom hash specialization for CityRecord
+namespace std {
+    template<>
+    struct hash<CityRecord> {
+        size_t operator()(const CityRecord& key) {
+            // Use city name as hash basis
+            return hash<std::string>()(key.Name);
+        }
+    };
+}
+
+int main() {
+    // Can use CityRecord as key with custom hash
+    std::unordered_map<CityRecord, std::string> cityDescriptions;
+    
+    CityRecord melbourne("Melbourne", 5000000, -37.8136, 144.9631);
+    cityDescriptions[melbourne] = "Cultural capital of Australia";
+    
+    // Access using CityRecord key
+    auto it = cityDescriptions.find(melbourne);
+    if (it != cityDescriptions.end()) {
+        std::cout << "Description: " << it->second << std::endl;
+    }
+    
+    return 0;
+}
+```
+
+Key Points
+* Use `std::unordered_map` when order doesn't matter and you want maximum speed
+* Use `std::map` when you need sorted iteration
+* References allow direct modification of map elements without copying
+* `operator[]` creates entries if they don't exist, `find()` is safer for lookup
+* Custom types as keys require hash function for `unordered_map`
+
+Best Practices
+```cpp
+// Safe lookup without creating entries
+auto it = cityMap.find("Paris");
+if (it != cityMap.end()) {
+    // Use it->first (key) and it->second (value)
+}
+
+// Range-based for loops with structured binding
+for (const auto& [cityName, cityData] : cityMap) {
+    std::cout << cityName << ": " << cityData.Population << std::endl;
+}
+
+// Use references to avoid copies when modifying
+auto& cityRef = cityMap["London"];
+cityRef.Population += 1000;
+```
+
+Recommendation: Use `std::unordered_map` by default unless you need ordering!
+</details>
+
+<details>
+<summary>What is NULL</summary>
+
+What is NULL?
+NULL is a macro that typically equals 0 in C++. It represents a null pointer - a pointer that doesn't point to any valid memory address.
+
+Example Code with Explanation
+```cpp
+#include <iostream>
+#include <string>
+
+class Entity {
+public:
+    Entity() = default;
+
+    const std::string& GetName() const { return m_Name; }
+
+    void PrintType() {
+        std::cout << "Entity\n";
+    }
+
+private:
+    Entity* m_Parent;
+    std::string m_Name;
+};
+
+int main() {
+    // Setting a pointer to nullptr (modern C++)
+    Entity* entity = nullptr;
+    // Memory layout: entity = 0x0000000000000000 (8 bytes of zeros on 64-bit systems)
+
+    // ❌ DANGEROUS: Calling member function on null pointer
+    // entity->GetName(); // CRASH: Read access violation
+    // This tries to access m_Name through a null 'this' pointer
+
+    // ✅ WORKS: Calling non-virtual member function that doesn't access member variables
+    entity->PrintType(); // Output: "Entity"
+    // This works because PrintType() doesn't access any member variables
+    // The function call happens, but 'this' pointer is invalid inside the function
+
+    // Void pointer can point to anything
+    void* value = nullptr; // Generic pointer with no type information
+
+    // NULL macro (old C style)
+    void* value2 = NULL; // NULL is typically #define NULL 0
+
+    return 0;
+}
+```
+
+Why Some Calls Work and Others Crash
+
+❌ Crashes: entity->GetName()
+```cpp
+entity->GetName(); // CRASH!
+```
+* Reason: The function accesses m_Name member variable
+* What happens: The compiler passes this pointer (which is nullptr) to the function
+* Inside function: return this->m_Name tries to access memory at address 0
+* Result: Access violation - trying to read from invalid memory
+
+✅ Works: entity->PrintType()
+```cpp
+entity->PrintType(); // Output: "Entity"
+```
+* Reason: Function doesn't access any member variables
+* What happens: Function call succeeds because no member access occurs
+* However: This is undefined behavior! The program could still crash
+
+Modern C++ Null Pointers - Prefer nullptr over NULL
+```cpp
+// Old C style (avoid)
+Entity* e1 = NULL;     // #define NULL 0
+Entity* e2 = 0;        // Literal zero
+
+// Modern C++ style (preferred)
+Entity* e3 = nullptr;  // Type-safe null pointer constant
+
+// nullptr has a specific type (std::nullptr_t)
+std::nullptr_t null_value = nullptr;
+```
+
+Safe Null Pointer Usage
+```cpp
+int main() {
+    Entity* entity = nullptr;
+    
+    // ✅ SAFE: Always check before using
+    if (entity != nullptr) {
+        entity->GetName(); // Safe to call
+        entity->PrintType();
+    }
+    
+    // ✅ SAFE: Shorthand null check
+    if (entity) {
+        entity->GetName();
+    }
+    
+    // ✅ SAFE: Using references (cannot be null)
+    Entity realEntity;
+    Entity& entityRef = realEntity; // References must be valid
+    entityRef.GetName(); // Always safe
+    
+    // ❌ DANGEROUS: No checks
+    // entity->GetName(); // Potential crash
+    
+    return 0;
+}
+```
+
+Undefined Behavior Example
+```cpp
+class Calculator {
+public:
+    int Add(int a, int b) {  // Doesn't use 'this'
+        return a + b;
+    }
+    
+    int GetValue() {  // Uses 'this' implicitly
+        return value;  // this->value
+    }
+    
+private:
+    int value = 42;
+};
+
+int main() {
+    Calculator* calc = nullptr;
+    
+    // ✅ Might work (but still undefined behavior)
+    int result = calc->Add(5, 3); // Output: 8
+    // Works because Add() doesn't access member variables
+    
+    // ❌ Will likely crash
+    // int val = calc->GetValue(); // CRASH!
+    // Tries to access this->value where this is null
+    
+    return 0;
+}
+```
+
+Key Points
+* `nullptr` is the modern, type-safe way to represent null pointers
+* `NULL` is a legacy macro that equals 0
+* Calling methods on null pointers is undefined behavior
+* Some calls may appear to work if they don't access member variables, but it's still unsafe
+* Always check for null before dereferencing pointers
+* References are safer than pointers because they can't be null
+
+Best Practices
+```cpp
+// ✅ Good
+Entity* entity = getEntity();
+if (entity) {
+    entity->GetName();
+}
+
+// ✅ Better - use references when possible
+Entity& entityRef = getEntityRef(); // Function returns reference
+entityRef.GetName(); // No null check needed
+
+// ❌ Bad - assuming pointer is valid
+entity->GetName(); // Potential crash
+```
+Remember: Just because a method call on a null pointer doesn't immediately crash doesn't mean it's safe - it's still undefined behavior!
+</details>
+
+<details>
+<summary>Empty</summary>
+
+```cpp
+
+```
 
 </details>
 
-
 Things that i need to understand:
-debugging in c++
+debugging in c++ (walgrind, gdb)
 compilators in c++
 Design Patterns (Singleton, Factory, Observer) what is this
 merge sort, bubble sort, quick sort - sorting
-what is RAII - Resource Acquisition Is Initialization, what does that mean
 
 git, git submodules, package managers used for library linking
 linux
 networking, OSI model, everything
 what good coding methods do i use in work?
+makefile, cmake
