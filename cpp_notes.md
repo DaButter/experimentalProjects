@@ -5788,7 +5788,7 @@ public:
     }
 
     // MOVE CONSTRUCTOR - The key to move semantics!
-    String(String&& other) noexcept {  // noexcept is important for optimization
+    String(String&& other) noexcept {  // noexcept is important for optimization - noexcept is a promise that a function won't throw exceptions. It's especially important for move operations because of how C++ handles exceptions during moves.
         printf("Moved!\n");
 
         // STEAL the resources from the other object
@@ -5804,7 +5804,7 @@ public:
     String& operator=(String&& other) noexcept {
         printf("Move assigned!\n");
 
-        if (this != &other) {  // Self-assignment check
+        if (this != &other) {  // Self-assignment check - checks if we are not doing: dest = dest(std::move(dest));
             delete[] m_Data;   // Clean up our current resources
 
             // Steal from other
@@ -5963,14 +5963,98 @@ Move semantics are fundamental to modern C++ performance and are used extensivel
 </details>
 
 <details>
-<summary><code>std::move</code> and move assignment operator</summary>
-
+<summary><code>std::move</code></summary>
 
 
 ```cpp
+#include <iostream>
+#include <string>
 
+void printName(std::string&& name) {
+    std::cout << "Name: " << name << std::endl;
+}
+
+int main() {
+    std::string data = "Hello";
+    
+    // Method 1: C-style cast (works but not recommended)
+    printName((std::string&&)data);
+    
+    // Method 2: std::move (recommended - cleaner and safer)
+    printName(std::move(data));
+    
+    return 0;
+}
 ```
 
+`std::move` is essentially just a cast - it doesn't actually "move" anything:
+```cpp
+// Simplified version of what std::move does:
+template<typename T>
+constexpr std::remove_reference_t<T>&& move(T&& arg) noexcept {
+    return static_cast<std::remove_reference_t<T>&&>(arg);
+}
+```
+
+So `std::move(data)` is basically:
+```cpp
+static_cast<std::string&&>(data)
+```
+
+More Realistic Examples
+
+Example 1: With Custom Class
+```cpp
+#include <iostream>
+
+class String {
+public:
+    String(const char* str) {
+        std::cout << "Created: " << str << std::endl;
+    }
+    
+    String(String&& other) noexcept {
+        std::cout << "Moved!" << std::endl;
+    }
+};
+
+void processString(String&& str) {
+    std::cout << "Processing rvalue string" << std::endl;
+}
+
+int main() {
+    String data = "Hello";
+    
+    processString(std::move(data));  // Calls move constructor
+    
+    return 0;
+}
+```
+
+Example 2: With Vector (More Practical)
+```cpp
+#include <iostream>
+#include <vector>
+#include <string>
+
+int main() {
+    std::vector<std::string> names;
+    std::string largeName = "This is a very long string that we want to move";
+    
+    std::cout << "Before move - largeName: " << largeName << std::endl;
+    
+    // Move the string into the vector (no copy!)
+    names.push_back(std::move(largeName));
+    
+    std::cout << "After move - largeName: " << largeName << std::endl;  // Likely empty!
+    std::cout << "In vector: " << names[0] << std::endl;
+    
+    return 0;
+}
+```
+Just remember:
+
+After using `std::move(data)`, you shouldn't rely on data having its original value, as the function you passed it to might have "moved from" it (stolen its resources).
 </details>
 
 
@@ -6001,7 +6085,7 @@ int main() {
     std::vector<CityRecord> cities;
 
     // Add cities to vector
-    cities.emplace_back("Melbourne", 5000000, -37.8136, 144.9631);
+    cities.emplace_back("Melbourne", 5000000, -37.8136, 144.9631);;
     cities.emplace_back("Berlin", 3769000, 52.5200, 13.4050);
     cities.emplace_back("Riga", 632000, 56.9496, 24.1052);
     cities.emplace_back("Lol-town", 1000, 0.0, 0.0);
@@ -6176,7 +6260,6 @@ Recommendation: Use `std::unordered_map` by default unless you need ordering!
 <details>
 <summary>What is NULL</summary>
 
-What is NULL?
 NULL is a macro that typically equals 0 in C++. It represents a null pointer - a pointer that doesn't point to any valid memory address.
 
 Example Code with Explanation
