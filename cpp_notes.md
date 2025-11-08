@@ -452,6 +452,7 @@ int main() {
 
 
 4. Static Member Functions Limitations
+
 Static member functions:
 
 ✅ Can access static members
@@ -586,6 +587,7 @@ inline std::string app_name = "MyRouter";  // ✅ Works with non-const too!
 inline std::vector<std::string> protocols = {"TCP", "UDP"};
 
 // Now include in multiple files - no linker errors!
+// works as global variables - all TUs share the same memory address of the variable
 ```
 
 Key Differences: Regular vs Inline
@@ -1025,6 +1027,18 @@ speed = level > 5 ? 10 : 5
 
 ```cpp
 speed = level > 5 ? level > 10 ? 15 : 10 : 5; // usually people do not nest their ternary operators
+
+// same as:
+int speed;
+if (level > 5) {
+    if (level > 10) {
+        speed = 15;
+    } else {
+        speed = 10;
+    }
+} else {
+    speed = 5;
+}
 ```
 
 </details>
@@ -1074,16 +1088,27 @@ delete[] b;  // [] for arrays needed
 
 Behind the scenes, `new` usually in standard library calls `malloc`:
 ```cpp
-Enitity* e = new Enitity();
-Enitity* e = (*Enitity)malloc(sizeof(Enitity))
-// this is actually kinda the same, the only diff is that malloc does not call the Entity() contructor
+Enitity* e1 = new Enitity();
 
-free(); // frees memory from malloc, dont mix new with free, use delete
+Enitity* e = (*Enitity)malloc(sizeof(Enitity)) // this is actually kinda the same, the only diff is that malloc does not call the Entity() contructor
+new (e) Entity(); // constructs Entity at the memory location pointed to by e
+
+e->~Entity(); // manually call destructor
+free(e); // frees memory from malloc, dont mix new with free, use delete
 ```
+
 You can also specify the address if needed:
 ```cpp
 Entity* e = new(b) Entity(); // assuming b is a pointer
 ```
+
+Key rule: Don't mix new with free, or malloc with delete — always match them properly.
+
+| Allocation method | Deallocation method |
+|-------------------|---------------------|
+| `malloc()`        | `free()`            |
+| `new`             | `delete`            |
+| `new[]`           | `delete[]`          |
 
 </details>
 
@@ -1632,34 +1657,34 @@ int main() {
     std::cout << "=== INEFFICIENT WAY ===" << std::endl;
     {
         std::vector<Vertex> vertices;
-
+        
         // This creates temporary Vertex objects, then COPIES them into vector
         vertices.push_back(Vertex(1, 2, 3));  // Construct + Copy
         vertices.push_back(Vertex(4, 5, 6));  // Construct + Copy + possible reallocation
         vertices.push_back(Vertex(7, 8, 9));  // Construct + Copy + possible reallocation
     }
-
+    
     std::cout << "\n=== EFFICIENT WAY ===" << std::endl;
     {
         std::vector<Vertex> vertices;
         vertices.reserve(3);  // Pre-allocate memory for 3 elements
-
+        
         // emplace_back constructs objects IN PLACE - no copies!
         vertices.emplace_back(1, 2, 3);  // Direct construction in vector memory
         vertices.emplace_back(4, 5, 6);  // Direct construction
         vertices.emplace_back(7, 8, 9);  // Direct construction
     }
-
+    
     std::cout << "\n=== EVEN BETTER: C++11 MOVE ===" << std::endl;
     {
         std::vector<Vertex> vertices;
         vertices.reserve(3);
-
+        
         // If you already have objects, use std::move
         Vertex v1(1, 2, 3);
         Vertex v2(4, 5, 6);
         Vertex v3(7, 8, 9);
-
+        
         vertices.push_back(std::move(v1));  // Move instead of copy
         vertices.push_back(std::move(v2));
         vertices.push_back(std::move(v3));
@@ -5623,7 +5648,6 @@ int main() {
 <details>
 <summary>lvalues and rvalues</summary>
 Basic Definitions
-
 * lvalue: Has a memory address, can appear on left side of assignment
 * rvalue: Temporary value, no persistent memory address, appears on right side
 
@@ -5737,7 +5761,6 @@ Quick Reference
 | func() (returns value)       | rvalue  | ❌         | ❌               |
 | func() (returns reference)   | lvalue  | ✅         | ✅               |
 </details>
-
 
 <details>
 <summary>Move semantics</summary>
@@ -6431,13 +6454,13 @@ Remember: Just because a method call on a null pointer doesn't immediately crash
 ```
 
 </details>
-
 Things that i need to understand:
 debugging in c++ (walgrind, gdb)
 compilators in c++
 Design Patterns (Singleton, Factory, Observer) what is this
 merge sort, bubble sort, quick sort - sorting
-
+memory segments, how program is loaded in to memory, what linux does
+ 
 git, git submodules, package managers used for library linking
 linux
 networking, OSI model, everything
