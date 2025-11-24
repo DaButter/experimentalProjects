@@ -1305,8 +1305,8 @@ int main() {
             // No manual delete needed - RAII handles it
         }
         */
-        std::unique_ptr<Entity> entity = std::make_unique<Entity>();
-        
+        std::unique_ptr<Entity> entity = std::make_unique<Entity>(); // This creates a new Entity on the heap and wraps it in a unique_ptr
+
         // ❌ This WON'T compile - unique_ptr cannot be copied
         // std::unique_ptr<Entity> entity2 = entity;
         
@@ -1747,7 +1747,8 @@ int main() {
 #include <vector>
 
 void counter() {
-    static int count = 0;  // Thread-safe initialization in C++11+
+    static int count = 0;  // count shared accross threads
+    // This is not thread-safe for incrementing count. Multiple threads may read/write count simultaneously, causing race conditions.
     count++;
     std::cout << "Count: " << count << std::endl;
 }
@@ -1761,6 +1762,19 @@ int main() {
         t.join();
     }
 }
+```
+
+To make previous code thread safe and avoiding race condition:
+```cpp
+std::mutex mtx;
+
+void counter() {
+    static int count = 0;
+    std::lock_guard<std::mutex> lock(mtx);
+    count++;
+    std::cout << "Count: " << count << std::endl;
+}
+// This ensures only one thread modifies count at a time
 ```
 
 Singleton Pattern with Local Static
@@ -2974,10 +2988,10 @@ Basic Usage:
 
 int main() {
     std::vector<int> values = {3, 5, 1, 4, 2};
-    
+
     // Default sorting (ascending)
     std::sort(values.begin(), values.end());
-    
+
     for (int value : values) {
         std::cout << value << " ";  // Output: 1 2 3 4 5
     }
@@ -2992,14 +3006,14 @@ Different Sorting Strategies
 
 int main() {
     std::vector<int> values = {3, 5, 1, 4, 2};
-    
+
     // Ascending (default behavior)
     std::sort(values.begin(), values.end());                    // 1 2 3 4 5
     std::sort(values.begin(), values.end(), std::less<int>());  // Same as above
-    
+
     // Descending
     std::sort(values.begin(), values.end(), std::greater<int>());  // 5 4 3 2 1
-    
+
     // Output results
     for (int value : values) {
         std::cout << value << " ";
@@ -3016,13 +3030,13 @@ int main() {
 
 int main() {
     std::vector<int> values = {3, 5, 1, 4, 2};
-    
+
     // Custom sorting with lambda
     std::sort(values.begin(), values.end(), [](int a, int b) {
         return a > b;  // Descending order
     });
     // Output: 5 4 3 2 1
-    
+
     // More complex custom sorting
     std::vector<int> values2 = {3, 5, 1, 4, 2};
     std::sort(values2.begin(), values2.end(), [](int a, int b) {
@@ -3032,7 +3046,7 @@ int main() {
         return a < b;  // Both same parity → sort normally
     });
     // Output: 2 4 1 3 5 (evens first, then odds, each group sorted)
-    
+
     for (int value : values2) {
         std::cout << value << " ";
     }
@@ -3153,7 +3167,17 @@ struct TreeNode {
 };
 
 // Heap (used in priority queues)
-std::priority_queue<int> max_heap;
+std::priority_queue<int> pq;
+pq.push(30);
+pq.push(10);
+pq.push(20);
+pq.push(40);
+
+while (!pq.empty()) {
+    std::cout << pq.top() << " ";
+    pq.pop();
+}
+// Output: 40 30 20 10 — elements are removed in descending order.
 ```
 
 3. Hash-Based Structures:
@@ -5762,6 +5786,235 @@ Quick Reference
 | func() (returns reference)   | lvalue  | ✅         | ✅               |
 </details>
 
+
+
+<details>
+<summary>Making data structures - array</summary>
+
+There problem is that we cannot specify a size at runtime to a stack allocated array, like:
+```int a = 5; int array[a];``` - will not compile. We can only define initialize an array with a const expression.
+
+Here we will try to replicate behaviour of std::array class.
+
+Option 1 - using alloca():
+```cpp
+#include <iostream>
+#include <array>
+
+class Array {
+  public:
+    Array(int size) {
+        m_Data = (int*)alloca(size * sizeof(int));
+    }
+  private:
+    int* m_Data;
+}
+
+int main() {
+    int size = 5;
+    Array data(size); // now we can
+}
+```
+
+Option 2 - using templates:
+```cpp
+#include <iostream>
+#include <array>
+
+// type of data, count of elements
+template<typename T, size_t S>
+class Array {
+  public:
+  private:
+    T m_Data[S];
+}
+
+int main() {
+    int size = 5;
+    Array<int, 10> data;
+}
+```
+
+Added stuff to Option 2:
+```cpp
+#include <iostream>
+#include <array>
+
+// type of data, count of elements
+template<typename T, size_t S>
+class Array {
+  public:
+    constexpr int Size() const { return S; }
+
+    T& operator[](size_t index) { return m_Data[index]; }
+    const T& operator[](size_t index) { return m_Data[index]; } // this allows also access data if Array is const
+    T* Data() { return m_Data; } // allows to access data
+    const T* Data() const {return m_Data};
+  private:
+    T m_Data[S];
+}
+
+int main() {
+    int size = 5;
+    Array<int, 10> data;
+
+    static_assert(data.Size() < 10, "Size is too large!");
+    Array<std::string, data.Size()> newArray;
+    newArray[0] = "Test";
+    newArray[1] = "Hello";
+    const auto& arrayRef = newArray;
+
+    for (size_t i = 0; i < data.Size(); i++) {
+        std::cout << data[i] << std::endl;
+        std::cout << arrayRef[i] << std::endl; 
+    }
+}
+```
+
+</details>
+
+<details>
+<summary>Making data structures - vector</summary>
+
+Here we will try to replicate behaviour of std::vector class (simplified).
+
+```cpp
+#include <iostream>
+#include <vector>
+
+template<typename T, size_t S>
+class Vector {
+  public:
+    Vector(int size) : m_Size(size) {
+        // allocate room for 2 elements
+        ReAlloc(2);
+    }
+
+    void PushBack(const T& value) {
+        if (m_Size >= m_Capacity)
+            ReAlloc(m_Capacity + m_Capacity/2);
+        m_Data[m_Size] = value;
+        m_Size++;
+    }
+
+    const T& operator[](size_t index) const {
+        if (index >= m_Size)
+        return m_Data[index];
+    }
+
+    size_t Size() const { return m_Size; }
+
+  private:
+    void ReAlloc(size_t newCapacity) {
+        // 1. allocate a new block of memory
+        // 2. copy (move) existing elements
+        // 3. delete old memory
+        T* newBlock = new T[newCapacity];
+
+        if (newCapacity < m_Size)
+            m_Size = newCapacity
+
+        for (size_t i = 0; i < m_Size; i++)
+            newBlock[i] = m_Data[i];
+
+        delete[] m_Data;
+        m_Data = newBlock;
+        m_Capacity = newCapacity;
+    }
+    T* m_Data = nullptr;
+    size_t m_Size = 0;
+    size_t m_Capacity = 0;
+}
+
+// print vector function
+template<typeName T>
+void PrintVector(const Vector<T>& vector) {
+    for (size_t i = 0; i < vector.Size(); i++) {
+        std::cout << vector[i] << std::endl;
+    }
+    std::cout << "-----------------------------------\n";
+}
+
+int main() {
+    Vector<std::string> vector;
+    vector.PushBack("Cherno");
+    vector.PushBack("C++");
+    // the 3rd element triggers reallocation
+    vector.PushBack("Vector");
+    PrintVector(vector);
+}
+```
+
+</details>
+
+<details>
+<summary>Binary and Bitwise Operators</summary>
+
+```cpp
+int a = 5;
+```
+
+In binary, 4 bytes (size of int) looks like this:
+```
+0000 0101 0000 0000 0000 0000 0000 0000 - little endian CPU (most computers)
+0000 0000 0000 0000 0000 0000 0000 0101 - big endian CPU
+```
+
+Operators:
+```
+<< - bit shift left
+>> - bit shift right
+& - bitwise AND
+| - bitwise OR
+^ - XOR
+~ - NOT
+```
+
+Bitshift examples:
+```
+a <<=1; (0000 0101) this results in 0000 1010 - in result, this doubles our number
+doubling happens in a*2^n - n bits shifted left
+
+a >>=1; (0001 1010) this reults in 0000 0101 - in result, this halves our number
+halving happens a/2^n
+```
+
+
+Bitwise AND:
+```
+0101 & 1101 = 0101
+This works as a bit mask - we can mask selective bits.
+
+101100101 to check a state of a single bit, we use a mask:
+101100101 & 000100000 = 000100000 - we can very easily check a value of a specific bit we are interested in
+```
+
+Bitwise OR:
+```
+1010 | 0110 = 1110
+```
+
+Bitwise XOR:
+```
+If bits are different, 0, else 1
+0011 ^ 0101 = 0110
+You can set a variable to zero by just a=a^a
+```
+
+Bitwise NOT:
+```
+just inverts
+~ 1001 0110 = 0110 1001
+```
+
+More practical examples:
+```
+0x5C1B >> 8 = 0x005C
+0x005C & 0xFF = 0x5C
+```
+
+</details>
+
 <details>
 <summary>Move semantics</summary>
 
@@ -6454,15 +6707,55 @@ Remember: Just because a method call on a null pointer doesn't immediately crash
 ```
 
 </details>
-Things that i need to understand:
-debugging in c++ (walgrind, gdb)
-compilators in c++
+
+### Networking specific C/C++ stuff
+
+<details>
+<summary>Network byte order</summary>
+
+Network byte order is big-endian (most significant byte first).
+
+Host byte order depends on your CPU:
+* x86/x86-64: little-endian
+* ARM: can be little or big, usually little-endian
+
+So whenever you send or receive data over the network, you often need to convert between host and network byte order.
+
+| Function   | Converts from → to          | Usage                                            |
+| ---------- | --------------------------- | ------------------------------------------------ |
+| `htons(x)` | **Host → Network** (16-bit) | Used before sending 16-bit values on the network |
+| `htonl(x)` | **Host → Network** (32-bit) | Used before sending 32-bit values on the network |
+| `ntohs(x)` | **Network → Host** (16-bit) | Used after receiving 16-bit values from network  |
+| `ntohl(x)` | **Network → Host** (32-bit) | Used after receiving 32-bit values from network  |
+
+What if you use `htons` / `htonl` instead?
+* On most platforms, `htonl(x) = ntohl(x)` (same operation, opposite direction, but implementation handles it).
+* Using `htonl` when parsing technically works on x86 because it's little-endian, but it confuses the intent — you are receiving, not sending.
+* Always use `ntohs / ntohl` when reading network data, `htons / htonl` when writing network data.
+
+✅ Rule of thumb
+* Receiving from network → Host: `ntohs / ntohl`
+* Sending to network ← Host: `htons / htonl`
+
+</details>
+
+
+Things that I need to understand:
+
+debugging in c++ (walgrind, gdb), compiler flags
+compilators in c++ - how are they different
+compilation optimization levels
 Design Patterns (Singleton, Factory, Observer) what is this
-merge sort, bubble sort, quick sort - sorting
-memory segments, how program is loaded in to memory, what linux does
- 
+merge sort, bubble sort, quick sort - sorting and complexity
+multithreading - more examples, usage of atomic, mutex, threads, async etc.
+malloc, calloc, realloc, alloca
+what is new in C++17 and newer versions (like C++23)
+what triggers git push -f? changes in currently pushed remote commits - rebase, squash, commit message change etc.?
+c++ unit tests, write one for my project to understand how it works and links to my code
+
+what are some stuff i need to know from boost library
 git, git submodules, package managers used for library linking
-linux
+linux - processes, system calls etc.
 networking, OSI model, everything
 what good coding methods do i use in work?
-makefile, cmake
+makefile, cmake(?)
