@@ -6740,17 +6740,358 @@ What if you use `htons` / `htonl` instead?
 </details>
 
 
+<details>
+<summary>Example of raw sockets and Linux file descriptors</summary>
+
+
+1. What is a File Descriptor (sockfd)?
+In Unix/Linux: "Everything is a file"
+```cpp
+int sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_NEIGHBOR_DISC));
+// sockfd = 3 (just an integer!)
+```
+
+A file descriptor is just an integer that acts as an index into the kernel's file descriptor table for your process.
+
+Example FD table:
+```
+Your Process:
+┌─────────────────────────────────────┐
+│ File Descriptor Table               │
+├─────┬───────────────────────────────┤
+│ fd  │ What it points to (in kernel) │
+├─────┼───────────────────────────────┤
+│ 0   │ stdin (keyboard input)        │
+│ 1   │ stdout (terminal output)      │
+│ 2   │ stderr (error output)         │
+│ 3   │ Socket for eth0               │ ← sockfd for eth0
+│ 4   │ Socket for eth1               │ ← sockfd for eth1
+│ 5   │ IPC server socket             │ ← ipc::server_fd
+│ 6   │ (available)                   │
+│ ... │ ...                           │
+└─────┴───────────────────────────────┘
+```
+
+```sockfd``` is just a number (like 3, 4, 5) that your process uses to reference a socket in the kernel.
+
+2. What Happens in createAndBindSocket()?
+
+```cpp
+static int createAndBindSocket(const EthInterface& ethInterface) {
+    // Step 1: Ask kernel to create a socket
+    int sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_NEIGHBOR_DISC));
+    //                  └─────┬─────┘  └──┬───┘  └──────────┬──────────┘
+    //                        │           │                  │
+    //                        │           │                  └─ Protocol: Only receive ETH_P_NEIGHBOR_DISC (0x88B5)
+    //                        │           └─ Type: Raw socket (access to Ethernet frames)
+    //                        └─ Family: Packet socket (low-level network access)
+
+    // Kernel creates socket and returns fd = 3 (for example)
+    // sockfd = 3
+
+
+    // Step 2: Bind socket to specific interface
+    struct sockaddr_ll addr{};
+    addr.sll_family = AF_PACKET;
+    addr.sll_ifindex = ethInterface.ifindex;  // e.g., 2 (for eth0)
+    addr.sll_protocol = htons(ETH_P_NEIGHBOR_DISC);
+
+    bind(sockfd, (struct sockaddr*)&addr, sizeof(addr));
+    //   └─ 3 ──┘
+
+    // Now kernel knows: "When packets with EtherType 0x88B5 arrive on interface 2 (eth0),
+    //                    put them in the receive buffer for file descriptor 3"
+
+    return sockfd;  // Return 3
+}
+```
+
+3. What is AF_PACKET?
+
+Socket Families (Address Families):
+ 
+| Family     | Purpose              | Access Level                                  |
+|------------|----------------------|-----------------------------------------------|
+| AF_INET    | IPv4 networking      | IP layer (can't see Ethernet headers)         |
+| AF_INET6   | IPv6 networking      | IP layer                                      |
+| AF_UNIX    | Unix domain sockets  | IPC (your CLI uses this)                      |
+| AF_PACKET  | Raw Ethernet frames  | Link layer (sees everything)                  |
+
+
+AF_PACKET gives you access to raw Ethernet frames:
+```
+Normal socket (AF_INET):
+Your app receives: [IP Header][TCP Header][Data]
+                   └─ Starting here
+
+AF_PACKET socket:
+Your app receives: [Dst MAC][Src MAC][EtherType][Payload]
+                   └─ Starting here (full Ethernet frame!)
+```
+
+4. How Does the Kernel Route Packets to Your Socket?
+
+When a packet arrives on eth0:
+```
+Network card receives Ethernet frame:
+┌────────────┬────────────┬──────────┬─────────────────────┐
+│ Dst MAC    │ Src MAC    │ EtherType│ Payload             │
+│ ff:ff:...  │ 08:00:...  │ 0x88B5   │ [machineId][ipv4]...│
+└────────────┴────────────┴──────────┴─────────────────────┘
+
+Kernel checks:
+1. Which interface? → eth0 (ifindex = 2)
+2. What EtherType? → 0x88B5
+3. Any socket bound to (ifindex=2, protocol=0x88B5)?
+   → Yes! File descriptor 3
+
+Kernel action:
+- Copy frame to receive buffer for fd 3
+- Mark fd 3 as "readable"
+```
+
+Now your process can read the packet:
+```cpp
+uint8_t buffer[66];
+recv(3, buffer, 66, 0);  // Read from fd 3 (eth0 socket)
+```
+
+5. How Does select() Use File Descriptors?
+```cpp
+// You have these sockets:
+// fd 3: eth0 socket (bound to ifindex=2, protocol=0x88B5)
+// fd 4: eth1 socket (bound to ifindex=3, protocol=0x88B5)
+// fd 5: IPC server socket
+
+/* build fd_set for all interfaces */
+fd_set readfds;
+FD_ZERO(&readfds);  // Clear the set
+// readfds = {empty}
+
+int max_fd = 0;
+
+// Add eth0 socket
+FD_SET(3, &readfds);  // Mark "I want to monitor fd 3"
+// readfds = {3}
+max_fd = 3;
+
+// Add eth1 socket
+FD_SET(4, &readfds);  // Mark "I want to monitor fd 4"
+// readfds = {3, 4}
+max_fd = 4;
+
+// Add IPC socket
+FD_SET(5, &readfds);  // Mark "I want to monitor fd 5"
+// readfds = {3, 4, 5}
+max_fd = 5;
+
+// Ask kernel: "Wake me when any of {3, 4, 5} have data"
+int ret = select(max_fd + 1, &readfds, nullptr, nullptr, &timeout);
+//               └─ 6 ─────┘  └── Check these fds for readability
+```
+
+6. What is fd_set?
+```fd_set``` is a Bitmask. Think of it as an array of bits, where each bit represents a file descriptor:
+
+```
+fd_set readfds (before select):
+┌───┬───┬───┬───┬───┬───┬───┬───┬───┬───┐
+│ 0 │ 1 │ 2 │ 3 │ 4 │ 5 │ 6 │ 7 │ 8 │ 9 │ ... (up to FD_SETSIZE, typically 1024)
+├───┼───┼───┼───┼───┼───┼───┼───┼───┼───┤
+│ 0 │ 0 │ 0 │ 1 │ 1 │ 1 │ 0 │ 0 │ 0 │ 0 │ ...
+└───┴───┴───┴───┴───┴───┴───┴───┴───┴───┘
+              ↑   ↑   ↑
+              │   │   └─ fd 5 (IPC) is monitored
+              │   └─ fd 4 (eth1) is monitored
+              └─ fd 3 (eth0) is monitored
+```
+
+After select() Returns:
+```
+Packet arrives on eth0 (fd 3):
+
+fd_set readfds (after select):
+┌───┬───┬───┬───┬───┬───┬───┬───┬───┬───┐
+│ 0 │ 1 │ 2 │ 3 │ 4 │ 5 │ 6 │ 7 │ 8 │ 9 │ ...
+├───┼───┼───┼───┼───┼───┼───┼───┼───┼───┤
+│ 0 │ 0 │ 0 │ 1 │ 0 │ 0 │ 0 │ 0 │ 0 │ 0 │ ...
+└───┴───┴───┴───┴───┴───┴───┴───┴───┴───┘
+              ↑   ↑   ↑
+              │   │   └─ fd 5: No data (bit cleared)
+              │   └─ fd 4: No data (bit cleared)
+              └─ fd 3: HAS DATA! (bit still set)
+```
+```select()``` modifies the ```fd_set``` to show which fds have data.
+
+7. Checking Which Socket Has Data
+
+```cpp
+int ret = select(6, &readfds, nullptr, nullptr, &timeout);
+// ret = 1 (one fd has data)
+
+// Check each socket
+if (FD_ISSET(3, &readfds)) {  // Check if bit 3 is set
+    // Yes! eth0 has data
+    recv(3, buffer, 66, 0);
+}
+
+if (FD_ISSET(4, &readfds)) {  // Check if bit 4 is set
+    // No, eth1 has no data (bit was cleared by select)
+}
+
+if (FD_ISSET(5, &readfds)) {  // Check if bit 5 is set
+    // No, IPC has no data
+}
+```
+
+8. Complete Flow Diagram
+Scenario: Neighbor sends packet on eth0
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ 1. INITIALIZATION (createAndBindSocket)                 │
+├─────────────────────────────────────────────────────────┤
+│ socket(AF_PACKET, ..., ETH_P_NEIGHBOR_DISC)             │
+│ → Kernel creates socket, returns fd = 3                 │
+│                                                         │
+│ bind(3, {ifindex=2, protocol=0x88B5}, ...)              │
+│ → Kernel notes: "fd 3 receives packets from eth0        │
+│                  with EtherType 0x88B5"                 │
+└─────────────────────────────────────────────────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────┐
+│ 2. MAIN LOOP (select)                                   │
+├─────────────────────────────────────────────────────────┤
+│ fd_set readfds;                                         │
+│ FD_ZERO(&readfds);          // readfds = {}             │
+│ FD_SET(3, &readfds);        // readfds = {3}            │
+│ FD_SET(4, &readfds);        // readfds = {3,4}          │
+│ FD_SET(5, &readfds);        // readfds = {3,4,5}        │
+│                                                         │
+│ select(6, &readfds, ...);   // Block until data arrives │
+└─────────────────────────────────────────────────────────┘
+                          ↓
+              Packet arrives on eth0!
+                          ↓
+┌─────────────────────────────────────────────────────────┐
+│ 3. KERNEL RECEIVES PACKET                               │
+├─────────────────────────────────────────────────────────┤
+│ Network card → Kernel:                                  │
+│   [ff:ff:...][08:00:...][0x88B5][payload]               │
+│                                                         │
+│ Kernel checks:                                          │
+│   Interface: eth0 (ifindex = 2) ✓                      │
+│   Protocol:  0x88B5 ✓                                  │
+│   Socket:    fd 3 is bound to (ifindex=2, 0x88B5) ✓    │
+│                                                         │
+│ Action:                                                 │
+│   Copy packet to receive buffer for fd 3                │
+│   Mark fd 3 as "readable"                               │
+│   Wake up process blocked in select()                   │
+└─────────────────────────────────────────────────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────┐
+│ 4. select() RETURNS                                     │
+├─────────────────────────────────────────────────────────┤
+│ select() returns 1 (one fd has data)                    │
+│ readfds modified by kernel:                             │
+│   Before: {3, 4, 5}                                     │
+│   After:  {3}  ← Only fd 3 has data                     │
+└─────────────────────────────────────────────────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────┐
+│ 5. YOUR CODE CHECKS AND READS                           │
+├─────────────────────────────────────────────────────────┤
+│ if (FD_ISSET(3, &readfds)) {  // TRUE! Bit 3 is set     │
+│     recv(3, buffer, 66, 0);   // Read packet from eth0  │
+│     neighbor::store(buffer, "eth0");                    │
+│ }                                                       │
+│                                                         │
+│ if (FD_ISSET(4, &readfds)) {  // FALSE (bit 4 cleared)  │
+│     // Not executed                                     │
+│ }                                                       │
+└─────────────────────────────────────────────────────────┘
+```
+
+9. Why Do We Need ```max_fd + 1```?
+
+```cpp
+int ret = select(max_fd + 1, &readfds, nullptr, nullptr, &timeout);
+//               └─ Why +1?
+```
+
+```select()``` checks fds from 0 to ```(max_fd)``` inclusive.
+```
+If max_fd = 5:
+select(6, ...) checks: fd 0, 1, 2, 3, 4, 5
+                       └─────────────────┘
+                       6 file descriptors total
+```
+It's just how the API is designed (legacy Unix behavior).
+
+10. Summary: The Magic of File Descriptors
+
+
+| Concept            | Explanation                                                          |
+|--------------------|----------------------------------------------------------------------|
+| File Descriptor    | Just an integer (e.g., 3, 4, 5) that references a kernel resource    |
+| sockfd             | A file descriptor that references a socket in the kernel             |
+| AF_PACKET          | Socket family for raw Ethernet frame access (sees MAC addresses)     |
+| bind()             | Tells kernel: "Send packets from this interface+protocol to this fd" |
+| fd_set             | Bitmask where each bit represents a file descriptor                  |
+| FD_SET(fd, &set)   | Set bit `fd` in the bitmask (mark for monitoring)                    |
+| select()           | Ask kernel: "Wake me when any of these fds have data"                |
+| FD_ISSET(fd, &set) | Check if bit `fd` is still set (has data?)                           |
+
+
+11. Visual: Service's Socket Architecture
+```
+Your Process:
+┌──────────────────────────────────────────────────────────┐
+│                                                          │
+│  File Descriptors:                                       │
+│  ┌─────┬──────────────────────────────────────┐          │
+│  │ fd  │ Socket                               │          │
+│  ├─────┼──────────────────────────────────────┤          │
+│  │ 3   │ AF_PACKET socket                     │          │
+│  │     │ Bound to: eth0 (ifindex=2)           │          │
+│  │     │ Protocol: 0x88B5                     │          │
+│  │     │ Receives: Neighbor discovery packets │          │
+│  ├─────┼──────────────────────────────────────┤          │
+│  │ 4   │ AF_PACKET socket                     │          │
+│  │     │ Bound to: eth1 (ifindex=3)           │          │
+│  │     │ Protocol: 0x88B5                     │          │
+│  ├─────┼──────────────────────────────────────┤          │
+│  │ 5   │ AF_UNIX socket                       │          │
+│  │     │ Bound to: /tmp/neighbor_discovery... │          │
+│  │     │ Listens for CLI connections          │          │
+│  └─────┴──────────────────────────────────────┘          │
+│                                                          │
+│  select() monitors: {3, 4, 5}                            │
+│  Wakes when: ANY of these has data                       │
+└──────────────────────────────────────────────────────────┘
+```
+
+Key Takeaway
+A file descriptor is just a number that your process uses to reference a kernel resource (socket, file, pipe, etc.).
+
+```select()``` is multiplexing - it lets you monitor multiple file descriptors simultaneously and wakes you up when any of them has data, without needing threads or busy-waiting.
+
+This is the foundation of high-performance network servers! 🚀
+
+</details>
+
+
 Things that I need to understand:
 
 debugging in c++ (walgrind, gdb), compiler flags
 compilators in c++ - how are they different
 compilation optimization levels
-Design Patterns (Singleton, Factory, Observer) what is this
+Design Patterns (Singleton, Factory, Observer)
 merge sort, bubble sort, quick sort - sorting and complexity
 multithreading - more examples, usage of atomic, mutex, threads, async etc.
 malloc, calloc, realloc, alloca
 what is new in C++17 and newer versions (like C++23)
-what triggers git push -f? changes in currently pushed remote commits - rebase, squash, commit message change etc.?
 c++ unit tests, write one for my project to understand how it works and links to my code
 
 what are some stuff i need to know from boost library
@@ -6758,4 +7099,5 @@ git, git submodules, package managers used for library linking
 linux - processes, system calls etc.
 networking, OSI model, everything
 what good coding methods do i use in work?
+
 makefile, cmake(?)
