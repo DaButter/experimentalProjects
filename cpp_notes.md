@@ -7082,6 +7082,324 @@ This is the foundation of high-performance network servers! 🚀
 </details>
 
 
+<details>
+<summary>How sockets and kernel work together</summary>
+
+File Descriptors Reference Kernel Objects
+A file descriptor is an index into a per-process table of kernel objects:
+
+```
+Your Process (PID 1234):
+┌────────────────────────────────────────────────────────┐
+│ File Descriptor Table (in process memory)             │
+├─────┬──────────────────────────────────────────────────┤
+│ fd  │ Pointer to kernel object                         │
+├─────┼──────────────────────────────────────────────────┤
+│ 0   │ ───→ struct file (points to stdin)               │
+│ 1   │ ───→ struct file (points to stdout)              │
+│ 2   │ ───→ struct file (points to stderr)              │
+│ 3   │ ───→ struct socket (AF_PACKET, eth0)             │ ← Your eth0 socket
+│ 4   │ ───→ struct socket (AF_PACKET, eth1)             │
+│ 5   │ ───→ struct socket (AF_UNIX, IPC)                │
+└─────┴──────────────────────────────────────────────────┘
+                    ↓
+            Points to kernel memory:
+┌────────────────────────────────────────────────────────┐
+│ Kernel Memory (shared across all processes)           │
+├────────────────────────────────────────────────────────┤
+│ struct socket for fd 3:                                │
+│   - Family: AF_PACKET                                  │
+│   - Protocol: 0x88B5                                   │
+│   - Bound interface: eth0 (ifindex=2)                  │
+│   - Receive buffer: 212 KB (sk_rcvbuf)                 │
+│   - Receive queue: list of sk_buff structs             │
+│   - Send buffer: 212 KB (sk_sndbuf)                    │
+│   - Socket state, flags, etc.                          │
+└────────────────────────────────────────────────────────┘
+```
+
+Key point: The fd is just a number. The real data lives in kernel memory as a ```struct socket```.
+
+Kernel creates:
+```cpp
+// Kernel code (simplified)
+struct socket {
+    short type;                    // SOCK_RAW
+    struct sock *sk;               // Protocol-specific socket data
+    const struct proto_ops *ops;   // Operations (send, recv, bind, etc.)
+    struct file *file;             // Associated file object
+    unsigned long flags;
+    // ... many more fields
+};
+
+struct sock {
+    // Protocol family specific data
+    __u32 sk_rcvbuf;              // Receive buffer size (212 KB default)
+    __u32 sk_sndbuf;              // Send buffer size
+    struct sk_buff_head sk_receive_queue;  // ← Packets waiting to be read
+    struct sk_buff_head sk_write_queue;    // ← Packets waiting to be sent
+    
+    // AF_PACKET specific:
+    int ifindex;                   // Bound to interface 2 (eth0)
+    unsigned short protocol;       // 0x88B5 (ETH_P_NEIGHBOR_DISC)
+    
+    // ... hundreds of other fields
+};
+```
+
+What Happens When You bind()?
+```cpp
+struct sockaddr_ll addr{};
+addr.sll_family = AF_PACKET;
+addr.sll_ifindex = ethInterface.ifindex;  // 2 (eth0)
+addr.sll_protocol = htons(ETH_P_NEIGHBOR_DISC);  // 0x88B5
+
+bind(sockfd, (struct sockaddr*)&addr, sizeof(addr));
+//   └─ fd 3
+```
+
+Kernel Action:
+```cpp
+// Kernel's bind() implementation (simplified)
+int packet_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len) {
+    struct sockaddr_ll *saddr = (struct sockaddr_ll *)uaddr;
+    struct sock *sk = sock->sk;
+    
+    // Store binding info in socket struct
+    sk->ifindex = saddr->sll_ifindex;      // 2 (eth0)
+    sk->protocol = saddr->sll_protocol;    // 0x88B5
+    
+    // Register with packet receive subsystem
+    register_packet_handler(sk->protocol, sk->ifindex, sk);
+    //                      └─ 0x88B5    └─ 2        └─ Socket to deliver to
+    
+    return 0;
+}
+```
+
+Result: Kernel maintains a global hash table:
+```
+Kernel's Global Packet Handler Table:
+┌──────────────┬─────────┬──────────────────────────┐
+│ Protocol     │ ifindex │ Socket to deliver to     │
+├──────────────┼─────────┼──────────────────────────┤
+│ 0x0800 (IP)  │ ANY     │ IP stack                 │
+│ 0x0806 (ARP) │ ANY     │ ARP handler              │
+│ 0x88B5       │ 2       │ Your socket (fd 3) ───┐  │
+│ 0x88B5       │ 3       │ Your socket (fd 4) ───┼─→ These point to
+│ 0x88CC (LLDP)│ ANY     │ LLDP daemon           │  │ your process's
+└──────────────┴─────────┴──────────────────────────┘  │ socket objects
+                                                        │
+                                                        ↓
+                                        Your Process's fd 3 → kernel socket struct
+```
+
+How Packets Are Delivered to Your Socket
+Scenario: Packet arrives on eth0
+
+```
+1. Network Card (Hardware):
+   ┌─────────────────────────────────────────┐
+   │ NIC receives Ethernet frame:            │
+   │ [ff:ff:...][08:00:...][0x88B5][payload] │
+   │                       └─ EtherType      │
+   └─────────────────────────────────────────┘
+                  ↓ DMA transfer to RAM
+   
+2. Kernel Network Driver:
+   ┌────────────────────────────────────────┐
+   │ Driver creates sk_buff:                │
+   │   struct sk_buff *skb;                 │
+   │   skb->data = pointer to frame         │
+   │   skb->len = 66 bytes                  │
+   │   skb->dev = eth0 (ifindex=2)          │
+   └────────────────────────────────────────┘
+                  ↓
+   
+3. Kernel Packet Handler:
+   ┌────────────────────────────────────────┐
+   │ Look up: (protocol=0x88B5, ifindex=2)  │
+   │ Found: Your socket (fd 3)              │
+   │                                        │
+   │ Action:                                │
+   │   sock = lookup_socket(0x88B5, 2);     │
+   │   if (sock->sk_receive_queue.len       │
+   │       < sock->sk_rcvbuf) {             │
+   │     enqueue(sock->sk_receive_queue,    │
+   │             skb);  ← Add packet!       │
+   │     wake_up(sock->wait_queue);         │
+   │   } else {                             │
+   │     drop_packet(skb);  ← Buffer full!  │
+   │   }                                    │
+   └────────────────────────────────────────┘
+                  ↓
+   
+4. Your Process's Socket:
+   ┌────────────────────────────────────────┐
+   │ struct sock (fd 3):                    │
+   │   sk_receive_queue:                    │
+   │     ┌──────┐  ┌──────┐  ┌──────┐       │
+   │     │ skb1 │→ │ skb2 │→ │ skb3 │ ...   │
+   │     └──────┘  └──────┘  └──────┘       │
+   │   sk_rcvbuf: 212992 bytes              │
+   │   sk_data_ready: set (has data!)       │
+   └────────────────────────────────────────┘
+                  ↓
+   
+5. select() Wakes Up:
+   ┌────────────────────────────────────────┐
+   │ select() checks:                       │
+   │   if (sock->sk_receive_queue.len > 0)  │
+   │     FD_SET(3, readfds);  ← Mark ready  │
+   │   return 1;  ← Wake your process       │
+   └────────────────────────────────────────┘
+                  ↓
+   
+6. Your recv() Call:
+   ┌─────────────────────────────────────────┐
+   │ recv(3, buffer, 66, 0);                 │
+   │                                         │
+   │ Kernel:                                 │
+   │   skb = dequeue(sock->sk_receive_queue) │
+   │   copy_to_user(buffer, skb->data, 66);  │
+   │   free(skb);  ← Free kernel memory      │
+   │   return 66;                            │
+   └─────────────────────────────────────────┘
+```
+
+AF_UNIX Socket: Special Case
+Your IPC Socket
+```cpp
+int server_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+
+struct sockaddr_un addr{};
+addr.sun_family = AF_UNIX;
+strncpy(addr.sun_path, "/tmp/neighbor_discovery.sock", ...);
+
+bind(server_fd, (struct sockaddr*)&addr, sizeof(addr));
+```
+
+What Happens:
+```
+1. socket() creates kernel object:
+   ┌────────────────────────────────────────┐
+   │ struct socket (AF_UNIX):               │
+   │   - type: SOCK_STREAM                  │
+   │   - state: not connected               │
+   │   - ops: unix_stream_ops               │
+   │   - unix_sock data:                    │
+   │       path: NULL (not bound yet)       │
+   │       peer: NULL                       │
+   │       receive_queue: empty             │
+   └────────────────────────────────────────┘
+
+2. bind() with path:
+   ┌────────────────────────────────────────┐
+   │ Kernel creates filesystem entry:       │
+   │   /tmp/neighbor_discovery.sock         │
+   │   Type: socket (not regular file!)     │
+   │   inode → points to socket struct      │
+   │                                        │
+   │ $ ls -l /tmp/neighbor_discovery.sock   │
+   │ srwxr-xr-x 1 user user 0 ...           │
+   │ ^                                      │
+   │ └─ 's' means socket                    │
+   └────────────────────────────────────────┘
+
+3. Kernel's Unix Socket Table:
+   ┌────────────────────────────────────────┐
+   │ Global Unix socket hash:               │
+   ├──────────────────────┬─────────────────┤
+   │ Path                 │ Socket struct   │
+   ├──────────────────────┼─────────────────┤
+   │ /tmp/neighbor_...    │ Your socket ──→ │
+   │ /var/run/docker.sock │ Docker socket   │
+   │ ...                  │ ...             │
+   └──────────────────────┴─────────────────┘
+```
+
+Visual: Complete Flow for the Service:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ YOUR PROCESS (neighbor_discovery_service)                       │
+├─────────────────────────────────────────────────────────────────┤
+│ File Descriptors:                                               │
+│   fd 3 ─┐  fd 4 ─┐  fd 5 ─┐                                     │
+└─────────┼────────┼────────┼─────────────────────────────────────┘
+          │        │        │
+          ↓        ↓        ↓
+┌─────────────────────────────────────────────────────────────────┐
+│ KERNEL MEMORY                                                   │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│ Socket for fd 3 (eth0):                                         │
+│ ┌──────────────────────────────────────────────────────────┐    │
+│ │ Family: AF_PACKET                                        │    │
+│ │ Protocol: 0x88B5                                         │    │
+│ │ Bound: ifindex=2 (eth0)                                  │    │
+│ │ Receive buffer: [skb1][skb2][skb3]... (212 KB)           │    │
+│ │ Send buffer: (empty)                                     │    │
+│ └──────────────────────────────────────────────────────────┘    │
+│                         ↑                                       │
+│                         │ Packets delivered here                │
+│                         │                                       │
+│ Socket for fd 4 (eth1):                                         │
+│ ┌──────────────────────────────────────────────────────────┐    │
+│ │ Family: AF_PACKET                                        │    │
+│ │ Protocol: 0x88B5                                         │    │
+│ │ Bound: ifindex=3 (eth1)                                  │    │
+│ │ Receive buffer: (empty)                                  │    │
+│ └──────────────────────────────────────────────────────────┘    │
+│                                                                 │
+│ Socket for fd 5 (IPC):                                          │
+│ ┌──────────────────────────────────────────────────────────┐    │
+│ │ Family: AF_UNIX                                          │    │
+│ │ Path: /tmp/neighbor_discovery.sock ←┐                    │    │
+│ │ State: LISTENING                    │                    │    │
+│ │ Connection queue: (empty)           │                    │    │
+│ └─────────────────────────────────────┼────────────────────┘    │
+│                                       │                         │
+└───────────────────────────────────────┼─────────────────────────┘
+                                        │
+                                        ↓
+┌─────────────────────────────────────────────────────────────────┐
+│ FILESYSTEM                                                      │
+├─────────────────────────────────────────────────────────────────┤
+│ /tmp/neighbor_discovery.sock                                    │
+│   inode: 12345                                                  │
+│   type: socket (not regular file)                               │
+│   points to: kernel socket object (fd 5)                        │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+Key Differences: AF_PACKET vs AF_UNIX
+
+| Aspect            | AF_PACKET (eth0/eth1 sockets)                    | AF_UNIX (IPC socket)                   |
+|-------------------|--------------------------------------------------|----------------------------------------|
+| Binds to          | Network interface (ifindex) + protocol           | Filesystem path                        |
+| Receives from     | Network card via kernel driver                   | Other local processes                  |
+| Buffer location   | Kernel memory (sk_receive_queue)                 | Kernel memory (unix socket buffer)     |
+| Filesystem entry? | No                                               | Yes (neighbor_discovery.sock)          |
+| Visible with ls?  | No                                               | Yes (srwxr-xr-x)                       |
+| Data source       | External network                                 | Local process                          |
+
+
+Summary
+
+| Question                   | Answer                                                                                                      |
+|----------------------------|-------------------------------------------------------------------------------------------------------------|
+| What does fd reference?    | An index into your process's file descriptor table, which points to a kernel socket object                  |
+| Where's the data buffered? | In kernel memory (sk_receive_queue inside `struct sock`)                                                    |
+| How does bind() work?      | Registers your socket in the kernel’s global handler table (protocol → socket mapping)                      |
+| Is there a file?           | For AF_UNIX: yes (filesystem marker). For AF_PACKET: no                                                     |
+| How are packets delivered? | Network driver → kernel looks up handler → enqueues packet in socket's receive queue → wakes `select()`     |
+
+
+The fd is just a number, but it references a rich kernel data structure containing buffers, queues, state, and bindings that make networking possible! 🚀
+
+</details>
+
 Things that I need to understand:
 
 debugging in c++ (walgrind, gdb), compiler flags
